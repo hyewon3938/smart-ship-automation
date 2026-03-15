@@ -68,6 +68,62 @@ export function useUpdateDeliveryType() {
   });
 }
 
+/** 주문 그룹 상태 수동 변경 */
+export function useUpdateGroupStatus() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      orderId,
+      status,
+    }: {
+      orderId: string;
+      status: string;
+    }) => {
+      const res = await fetch("/api/orders/group", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderId, status }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "상태 변경 실패");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["orders"] });
+    },
+  });
+}
+
+/** 주문 그룹 택배유형 일괄 변경 */
+export function useUpdateGroupDeliveryType() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      orderId,
+      deliveryType,
+    }: {
+      orderId: string;
+      deliveryType: DeliveryType;
+    }) => {
+      const res = await fetch("/api/orders/group", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderId, deliveryType }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "택배 유형 변경 실패");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["orders"] });
+    },
+  });
+}
+
 /** 선택 주문 예약 */
 export function useBookOrders() {
   const queryClient = useQueryClient();
