@@ -1,5 +1,6 @@
 ---
 model: opus
+description: 기능 설계 - 상세 구현 계획서 작성
 ---
 
 # /design - 기능 설계 스킬
