@@ -4,6 +4,7 @@ import {
   LOGIN_TIMEOUT_MS,
   ACTION_DELAY_MS,
 } from "./selectors";
+import { saveCookies } from "./browser";
 
 import type { Page } from "playwright";
 
@@ -20,11 +21,18 @@ export async function isLoggedIn(page: Page): Promise<boolean> {
       await page.goto(GS_URLS.DOMESTIC, { waitUntil: "domcontentloaded" });
     }
 
-    // "마이페이지" 링크가 보이면 로그인 상태
-    return await page
-      .locator(LOGIN_SELECTORS.LOGGED_IN_INDICATOR)
-      .isVisible({ timeout: 3000 })
-      .catch(() => false);
+    // "마이페이지" 링크 또는 "로그아웃" 링크가 보이면 로그인 상태
+    const [myPageVisible, logoutVisible] = await Promise.all([
+      page
+        .locator(LOGIN_SELECTORS.LOGGED_IN_INDICATOR)
+        .isVisible({ timeout: 3000 })
+        .catch(() => false),
+      page
+        .locator("a:has-text('로그아웃')")
+        .isVisible({ timeout: 3000 })
+        .catch(() => false),
+    ]);
+    return myPageVisible || logoutVisible;
   } catch {
     return false;
   }
@@ -86,8 +94,9 @@ export async function login(page: Page): Promise<void> {
 
   // 로그인 성공 대기
   try {
-    // 방법 1: 마이페이지 링크 등장
+    // 방법 1: 마이페이지 링크 등장 (a[href*='my-page'])
     // 방법 2: 국내택배 예약 페이지로 리다이렉트
+    // 방법 3: "로그아웃" 텍스트 등장 (가장 확실한 신호)
     await Promise.race([
       page.waitForSelector(LOGIN_SELECTORS.LOGGED_IN_INDICATOR, {
         timeout: LOGIN_TIMEOUT_MS,
@@ -95,8 +104,14 @@ export async function login(page: Page): Promise<void> {
       page.waitForURL("**/reservation-inquiry/**", {
         timeout: LOGIN_TIMEOUT_MS,
       }),
+      page.waitForSelector("a:has-text('로그아웃')", {
+        timeout: LOGIN_TIMEOUT_MS,
+      }),
     ]);
     console.log("[auth] 로그인 성공");
+
+    // 로그인 쿠키 저장 → 다음 실행 시 재사용
+    await saveCookies();
   } catch {
     // 로그인 실패 원인 확인
     const bodyText = await page.evaluate(() =>

@@ -9,8 +9,7 @@
 export const GS_URLS = {
   LOGIN: "https://www.cvsnet.co.kr/member/login/index.do",
   DOMESTIC: "https://www.cvsnet.co.kr/reservation-inquiry/domestic/index.do",
-  // TODO: 내일배송 URL은 사이트에서 정확한 경로 확인
-  NEXT_DAY: "https://www.cvsnet.co.kr/reservation-inquiry/nextday/index.do",
+  NEXT_DAY: "https://www.cvsnet.co.kr/reservation-inquiry/nextDay/nextIndex.do",
 } as const;
 
 // ── 로그인 ──
@@ -18,43 +17,66 @@ export const LOGIN_SELECTORS = {
   USERNAME: "#memberId",
   PASSWORD: "#memberKey",
   SUBMIT: "#memberSubmit",
-  /** 로그인 성공 시 상단에 '마이페이지' 링크가 나타남 */
-  LOGGED_IN_INDICATOR: "a[href*='mypage']",
+  /** 로그인 성공 시 상단에 '마이페이지' 링크가 나타남 (실제 URL: /my-page/...) */
+  LOGGED_IN_INDICATOR: "a[href*='my-page']",
   /** Cloudflare Turnstile 캡챠 응답 토큰 */
   TURNSTILE_RESPONSE: "#memberToken",
 } as const;
 
 // ── 국내택배 예약 폼 ──
+// RIRsvtnController.js 소스 기반 실제 셀렉터 (2026-03 확인)
 export const DOMESTIC_SELECTORS = {
-  // 물품 정보
-  PRODUCT_SELECT: "#productType", // TODO: 물품선택 드롭다운
-  PRODUCT_PRICE: "#productPrice", // TODO: 물품가액
-  RESERVATION_NAME: "#reservationName", // TODO: 예약명
+  /** 폼 태그 */
+  FORM: "#frm",
 
-  // 보내는 분 (주소록)
-  SENDER_ADDRESSBOOK_BTN: ".btn-address-book", // TODO: "주소록에서 가져오기" 버튼
-  SENDER_ADDRESSBOOK_FIRST: ".address-list .item:first-child", // TODO: 주소록 첫 항목
+  // 예약명 (placeholder="예약명" 이지만 id는 reserved_comments)
+  RESERVATION_NAME: "#reserved_comments",
+
+  // 물품 정보
+  PRODUCT_SELECT: "#goods_kind", // 물품 종류 <select> (08=잡화/서적)
+  PRODUCT_EXEMPTION: "#exemption_agree08", // 잡화/서적 선택 시 동의 체크박스
+  PRODUCT_PRICE: "#goods_price", // 물품 가액 (만원 단위)
+
+  // 보내는 분 — 주소록에서 선택하는 UI
+  // "나의 주소록" 버튼 (data-addr-gb="01" data-trgt-addr="sender")
+  SENDER_ADDRESSBOOK_BTN: "a[data-trgt-addr='sender']",
+  // 주소록 레이어
+  SENDER_ADDRESSBOOK_LAYER: "#layer_myAddrList",
+  // 주소록 첫 항목 선택 버튼
+  SENDER_ADDRESSBOOK_FIRST: "#div_myAddr .list:first-child a",
+
+  // 보내는 분 — 직접 입력 필드 (주소록 선택 시 자동 채움)
+  SENDER_NAME: "#real_sender_name",
+  SENDER_PHONE: "#real_sender_telno",
+  SENDER_ZIPCODE: "#real_sender_post_no",
+  SENDER_ADDRESS: "#real_sender_addr",
+  SENDER_ADDRESS_DETAIL: "#real_sender_detaddr",
 
   // 받는 분
-  RECIPIENT_NAME: "#recipientName", // TODO: 이름
-  RECIPIENT_PHONE: "#recipientPhone", // TODO: 전화번호
-  RECIPIENT_ZIPCODE: "#recipientZip", // TODO: 우편번호
-  RECIPIENT_ADDRESS: "#recipientAddr", // TODO: 기본주소
-  RECIPIENT_ADDRESS_DETAIL: "#recipientAddrDetail", // TODO: 상세주소
-  ZIPCODE_SEARCH_BTN: ".btn-zipcode", // TODO: 우편번호 검색 버튼
+  RECIPIENT_NAME: "#receiver_name",
+  RECIPIENT_PHONE: "#receiver_telno",
+  RECIPIENT_ZIPCODE: "#receiver_postno",
+  RECIPIENT_ADDRESS: "#receiver_addr",
+  RECIPIENT_ADDRESS_DETAIL: "#receiver_detail_addr",
+
+  // 주의사항 팝업 (예약 페이지 첫 진입 시 표시)
+  CAUTION_POPUP: ".layer_popup, .popup_wrap, [class*='caution'], [class*='notice']",
+  CAUTION_CONFIRM: "a:has-text('오늘 하루 보지 않기'), button:has-text('오늘 하루 보지 않기'), a:has-text('인지하였습니다'), button:has-text('인지하였습니다'), a:has-text('닫기'), button:has-text('닫기')",
+
+  // 배송 요청사항
+  DELIVERY_MESSAGE: "#special_contents", // 배송 요청사항 (text input)
 
   // 제출 & 결과
-  SUBMIT: ".btn-submit", // TODO: 예약 신청 버튼
-  CONFIRM_OK: ".btn-confirm", // TODO: 확인 팝업 OK 버튼 (있을 경우)
-  SUCCESS_INDICATOR: ".reservation-complete", // TODO: 완료 페이지 식별자
-  RESERVATION_NO: ".reservation-number", // TODO: 예약번호 텍스트 위치
+  SUBMIT: "a.submit", // "예약하기" 버튼 (<a class="org submit">)
+  CONFIRM_OK: ".btn_confirm, .popup_btn a, .layerPopup a", // 확인 팝업
+  SUCCESS_INDICATOR: ".reservation-complete", // TODO: 완료 페이지 식별자 — 실제 확인 필요
+  RESERVATION_NO: ".reservation-number", // TODO: 예약번호 텍스트 — 실제 확인 필요
 } as const;
 
 // ── 내일배송 예약 폼 ──
-// 국내택배와 동일 구조일 가능성 높음. 다르면 개별 오버라이드
+// 국내택배와 동일 구조. URL만 다름.
 export const NEXT_DAY_SELECTORS = {
   ...DOMESTIC_SELECTORS,
-  // TODO: 내일배송 전용 필드가 있으면 여기에 오버라이드
 } as const;
 
 // ── 타이밍 상수 ──

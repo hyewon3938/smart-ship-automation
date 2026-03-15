@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { bookOrders, getOrdersByIds } from "@/lib/orders";
+import { groupOrdersByOrderId } from "@/lib/groupOrders";
 import { enqueueBookings } from "@/lib/gs-delivery/worker";
 
 import type { BookingTask } from "@/lib/gs-delivery/types";
@@ -16,30 +17,32 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 1. 상태 → booking (기존 로직)
+    // 1. 상태 → booking (전체 상품)
     const result = bookOrders(orderIds);
 
-    // 2. 워커에 예약 작업 전달 (비동기, 즉시 반환)
+    // 2. orderId 기준 그룹화 → 1그룹 = 1건 택배 예약
     const targetOrders = getOrdersByIds(orderIds);
-    const tasks: BookingTask[] = targetOrders.map((order) => ({
-      orderId: order.id,
-      recipientName: order.recipientName,
-      recipientPhone: order.recipientPhone,
-      recipientAddress: order.recipientAddress,
-      recipientAddressDetail: order.recipientAddressDetail ?? null,
-      recipientZipCode: order.recipientZipCode,
-      deliveryType: order.selectedDeliveryType as "domestic" | "nextDay",
-      productName: order.productName,
-      totalPrice: order.totalPrice ?? 0,
-      quantity: order.quantity,
-      shippingMemo: order.shippingMemo ?? null,
+    const groups = groupOrdersByOrderId(targetOrders);
+
+    const tasks: BookingTask[] = groups.map((group) => ({
+      orderDbIds: group.orders.map((o) => o.id),
+      naverOrderId: group.orderId,
+      recipientName: group.recipientName,
+      recipientPhone: group.recipientPhone,
+      recipientAddress: group.recipientAddress,
+      recipientAddressDetail: group.recipientAddressDetail,
+      recipientZipCode: group.recipientZipCode,
+      deliveryType: group.orders[0].selectedDeliveryType as "domestic" | "nextDay",
+      totalPrice: group.orders.reduce((sum, o) => sum + (o.totalPrice ?? 0), 0),
+      shippingMemo: group.shippingMemo,
     }));
 
     enqueueBookings(tasks);
 
     return NextResponse.json({
-      message: `${result.count}건 예약이 시작되었습니다`,
-      ...result,
+      message: `${groups.length}건 예약이 시작되었습니다`,
+      count: result.count,
+      groupCount: groups.length,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "알 수 없는 오류";

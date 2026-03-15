@@ -1,4 +1,4 @@
-import type { Order, OrderGroup } from "@/types";
+import type { Order, OrderGroup, OrderStatus } from "@/types";
 
 /**
  * 같은 orderId를 가진 주문을 하나의 그룹으로 묶는다.
@@ -30,7 +30,7 @@ export function groupOrdersByOrderId(orders: Order[]): OrderGroup[] {
       recipientAddressDetail: first.recipientAddressDetail,
       recipientZipCode: first.recipientZipCode,
       recipientPhone: first.recipientPhone,
-      shippingMemo: first.shippingMemo,
+      shippingMemo: groupOrders.find((o) => o.shippingMemo)?.shippingMemo ?? null,
       isNextDayEligible: groupOrders.every((o) => o.isNextDayEligible),
       orderDate: first.orderDate,
     });
@@ -42,4 +42,40 @@ export function groupOrdersByOrderId(orders: Order[]): OrderGroup[] {
   );
 
   return groups;
+}
+
+/** 그룹 내 상태 요약 (우선순위 기반) */
+export function getGroupStatus(orders: Order[]): OrderStatus {
+  const statuses = new Set(orders.map((o) => o.status));
+  if (statuses.size === 1) return orders[0].status as OrderStatus;
+  if (statuses.has("booking")) return "booking";
+  if (statuses.has("failed")) return "failed";
+  if (statuses.has("pending")) return "pending";
+  if (statuses.has("booked")) return "booked";
+  return "skipped";
+}
+
+/**
+ * 주문 그룹 기준 상태별 카운트.
+ * 화면에 표시되는 모든 숫자는 주문(orderId) 단위.
+ */
+export function countGroupsByStatus(orders: Order[]): {
+  all: number;
+  pending: number;
+  booking: number;
+  booked: number;
+  failed: number;
+  skipped: number;
+} {
+  const groups = groupOrdersByOrderId(orders);
+  const counts = { all: groups.length, pending: 0, booking: 0, booked: 0, failed: 0, skipped: 0 };
+
+  for (const group of groups) {
+    const status = getGroupStatus(group.orders);
+    if (status in counts) {
+      counts[status as keyof typeof counts]++;
+    }
+  }
+
+  return counts;
 }
