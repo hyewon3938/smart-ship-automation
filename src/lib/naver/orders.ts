@@ -9,6 +9,7 @@ const BASE_URL = "https://api.commerce.naver.com/external/v1";
 const MAX_BATCH_SIZE = 300; // 네이버 API 배치 최대 크기
 const MAX_RETRIES = 3;
 const INITIAL_BACKOFF_MS = 1000;
+const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 
 /**
  * Rate limit 대응 지수 백오프 fetch 래퍼
@@ -42,7 +43,7 @@ export async function fetchChangedProductOrderIds(): Promise<
   const token = await getAccessToken();
 
   const now = new Date();
-  const from = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+  const from = new Date(now.getTime() - ONE_DAY_MS);
 
   const params = new URLSearchParams({
     lastChangedFrom: from.toISOString(),

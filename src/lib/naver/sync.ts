@@ -2,29 +2,22 @@ import { eq } from "drizzle-orm";
 
 import { db } from "@/lib/db";
 import { orders } from "@/lib/db/schema";
-
 import { fetchPendingOrders } from "./orders";
 import { isNextDayDeliveryEligible } from "./regions";
+
+import type { Order } from "@/types";
 import type { ProductOrderDetail } from "./types";
 
 /**
  * 단일 주문을 DB에 upsert (productOrderId 기준 중복 방지)
- * pending 상태가 아닌 주문(이미 처리 중/완료)은 업데이트하지 않음
+ * existing이 있으면 update, 없으면 insert
  */
-function upsertOrder(order: ProductOrderDetail): void {
+function upsertOrder(order: ProductOrderDetail, existing: Order | undefined): void {
   const address =
     `${order.shippingAddress.baseAddress} ${order.shippingAddress.detailAddress ?? ""}`.trim();
   const isNextDay = isNextDayDeliveryEligible(address);
 
-  const existing = db
-    .select()
-    .from(orders)
-    .where(eq(orders.productOrderId, order.productOrderId))
-    .get();
-
   if (existing) {
-    if (existing.status !== "pending") return;
-
     db.update(orders)
       .set({
         orderDate: order.orderDate,
@@ -90,7 +83,7 @@ export async function syncOrders(): Promise<{
       continue;
     }
 
-    upsertOrder(order);
+    upsertOrder(order, existing);
 
     if (existing) {
       updated++;
