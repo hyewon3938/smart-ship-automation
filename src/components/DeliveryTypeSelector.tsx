@@ -10,6 +10,11 @@ import {
 
 import type { DeliveryType } from "@/types";
 
+const DELIVERY_LABELS: Record<DeliveryType, string> = {
+  domestic: "국내택배",
+  nextDay: "내일배송",
+};
+
 interface DeliveryTypeSelectorProps {
   value: DeliveryType;
   isNextDayEligible: boolean;
@@ -31,7 +36,9 @@ export function DeliveryTypeSelector({
       disabled={disabled}
     >
       <SelectTrigger className="w-28 h-7 text-xs">
-        <SelectValue />
+        <span data-slot="select-value" className="flex flex-1 text-left">
+          {DELIVERY_LABELS[value]}
+        </span>
       </SelectTrigger>
       <SelectContent>
         <SelectItem value="domestic" className="text-xs">
