@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
 
 import { syncOrders } from "@/lib/naver/sync";
+import { setSetting } from "@/lib/settings";
 
 export async function POST() {
   try {
     const result = await syncOrders();
+    setSetting("lastSyncTime", new Date().toISOString());
 
     return NextResponse.json({
       message: "동기화 완료",

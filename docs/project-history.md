@@ -59,8 +59,29 @@
   - vitest v4는 ESM 전용 → config 파일을 .mts로 변환해야 동작
 
 ### Phase 3: 대시보드 UI
-- **상태:** 예정
-- **내용:** 주문 테이블, 선택/예약 UI, 상태 폴링
+- **완료일:** 2026-03-15
+- **PR:** #9
+- **주요 변경:**
+  - OrderTable: 체크박스 행 선택/전체 선택, 8개 컬럼 (상품/수량/금액/수령인/배송지/택배유형/상태)
+  - StatusBadge: 상태별 색상 뱃지 (대기=회색, 예약중=파랑, 완료=초록, 실패=빨강)
+  - StatusFilter: 상태별 필터 탭, 건수 표시
+  - DeliveryTypeSelector: 행별 택배 유형 변경, 내일배송 불가 지역 비활성화
+  - SyncButton: 동기화 트리거 + 상대 시간 표시 ("3분 전")
+  - BookingConfirmDialog: 예약 전 수령인 목록/택배유형 요약 확인
+  - TanStack Query: booking 상태 주문 있을 때 3초 자동 폴링
+  - API 추가: PATCH /api/orders/[id] (택배유형), POST /api/orders/book (예약시작)
+  - settings 서비스: lastSyncTime 관리
+  - shadcn/ui 7종 추가 (table, checkbox, badge, dialog, select, skeleton, tooltip)
+- **기술적 결정:**
+  - OrderStatus/DeliveryType union 타입 명시 → Drizzle 컬럼 타입과의 정합성 보장
+  - POST /api/orders/book은 Phase 3에서 pending→booking 상태 전환만 수행, Phase 4에서 GS자동화 연결
+  - useOrders를 단일 파일에서 4개 훅 export → 응집성 유지
+  - `allOrdersQuery`를 별도 호출로 상태 카운트 계산 → 필터된 뷰에서도 전체 건수 표시
+- **이슈/교훈:**
+  - Phase 2 PR(#8)이 main이 아닌 chore/1-project-setup에 머지됨 → feat/3 브랜치를 chore/1-project-setup 기반으로 rebase
+  - @base-ui/react TooltipTrigger는 asChild prop 미지원 → SelectItem에 직접 disabled + 레이블로 불가 지역 표시
+  - @base-ui/react Checkbox의 indeterminate 상태는 별도 `indeterminate` prop (Radix UI의 `checked="indeterminate"`와 다름)
+  - Toaster 미등록 버그 → providers.tsx에 추가 (코드 리뷰에서 발견)
 
 ### Phase 4: GS택배 Playwright 자동화
 - **상태:** 예정
