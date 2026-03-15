@@ -1,15 +1,15 @@
 import { getAccessToken } from "./auth";
 import {
-  lastChangedStatusesResponseSchema,
-  productOrdersQueryResponseSchema,
+  conditionalOrdersResponseSchema,
+  toProductOrderDetail,
 } from "./types";
 import type { ProductOrderDetail } from "./types";
 
 const BASE_URL = "https://api.commerce.naver.com/external/v1";
-const MAX_BATCH_SIZE = 300; // 네이버 API 배치 최대 크기
 const MAX_RETRIES = 3;
 const INITIAL_BACKOFF_MS = 1000;
-const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+const LOOKBACK_DAYS = 7; // 기본 조회 기간 (일)
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 /**
  * Rate limit 대응 지수 백오프 fetch 래퍼
@@ -34,91 +34,103 @@ async function fetchWithRetry(
 }
 
 /**
- * Step 1: 변경 상품 주문 ID 목록 조회
- * 최근 24시간 내 PAYED 상태로 변경된 주문을 가져온다
+ * 조건형 상품 주문 상세 내역 조회 (단일 24시간 윈도우)
+ * GET /v1/pay-order/seller/product-orders
+ *
+ * 네이버 API 제약: from~to 최대 24시간
  */
-export async function fetchChangedProductOrderIds(): Promise<
-  { productOrderId: string; orderId: string }[]
-> {
-  const token = await getAccessToken();
-
-  const now = new Date();
-  const from = new Date(now.getTime() - ONE_DAY_MS);
-
-  const params = new URLSearchParams({
-    lastChangedFrom: from.toISOString(),
-    lastChangedType: "PAYED",
-  });
-
-  const response = await fetchWithRetry(
-    `${BASE_URL}/pay-order/seller/product-orders/last-changed-statuses?${params}`,
-    {
-      method: "GET",
-      headers: { Authorization: `Bearer ${token}` },
-    }
-  );
-
-  if (!response.ok) {
-    const body = await response.text();
-    throw new Error(`변경 주문 조회 실패 (${response.status}): ${body}`);
-  }
-
-  const json = await response.json();
-  const parsed = lastChangedStatusesResponseSchema.parse(json);
-
-  return parsed.data.lastChangeStatuses.map((s) => ({
-    productOrderId: s.productOrderId,
-    orderId: s.orderId,
-  }));
-}
-
-/**
- * Step 2: 상품 주문 상세 조회 (배치)
- * productOrderId 목록으로 수령자 정보를 포함한 상세 데이터 조회
- */
-export async function fetchProductOrderDetails(
-  productOrderIds: string[]
+async function fetchOrdersForWindow(
+  token: string,
+  from: Date,
+  to: Date,
+  statuses: string,
 ): Promise<ProductOrderDetail[]> {
-  if (productOrderIds.length === 0) return [];
-
-  const token = await getAccessToken();
   const results: ProductOrderDetail[] = [];
+  let page = 1;
+  let hasNext = true;
 
-  // MAX_BATCH_SIZE 단위로 나눠서 요청
-  for (let i = 0; i < productOrderIds.length; i += MAX_BATCH_SIZE) {
-    const batch = productOrderIds.slice(i, i + MAX_BATCH_SIZE);
+  while (hasNext) {
+    const params = new URLSearchParams({
+      from: from.toISOString(),
+      to: to.toISOString(),
+      productOrderStatuses: statuses,
+      page: String(page),
+      size: "300",
+    });
 
     const response = await fetchWithRetry(
-      `${BASE_URL}/pay-order/seller/product-orders/query`,
+      `${BASE_URL}/pay-order/seller/product-orders?${params}`,
       {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ productOrderIds: batch }),
-      }
+        method: "GET",
+        headers: { Authorization: `Bearer ${token}` },
+      },
     );
 
+    const body = await response.text();
+
     if (!response.ok) {
-      const body = await response.text();
-      throw new Error(`주문 상세 조회 실패 (${response.status}): ${body}`);
+      throw new Error(
+        `조건형 주문 조회 실패 (${response.status}): ${body.slice(0, 500)}`,
+      );
     }
 
-    const json = await response.json();
-    const parsed = productOrdersQueryResponseSchema.parse(json);
+    const json = JSON.parse(body);
 
-    results.push(...parsed.data.map((d) => d.productOrder));
+    // 데이터 없는 응답 (data 필드 없거나 contents 비어있음)
+    if (!json.data?.contents?.length) {
+      break;
+    }
+
+    const parsed = conditionalOrdersResponseSchema.parse(json);
+    const orders = parsed.data.contents.map((c) =>
+      toProductOrderDetail(c.content),
+    );
+    results.push(...orders);
+
+    hasNext = parsed.data.pagination.hasNext;
+    page++;
+
+    // 다음 페이지 요청 시 Rate limit 방지
+    if (hasNext) {
+      await new Promise((r) => setTimeout(r, 500));
+    }
   }
 
   return results;
 }
 
 /**
- * 발송대기 주문 전체 조회 (Step 1 + Step 2 조합)
+ * 발송대기 주문 전체 조회
+ *
+ * 조건형 API는 from~to 최대 24시간 제약이 있어,
+ * LOOKBACK_DAYS 기간을 하루씩 나눠서 스캔한다.
+ * productOrderStatuses=PAYED (결제완료 = 배송준비 상태)
  */
 export async function fetchPendingOrders(): Promise<ProductOrderDetail[]> {
-  const changedOrders = await fetchChangedProductOrderIds();
-  const productOrderIds = changedOrders.map((o) => o.productOrderId);
-  return fetchProductOrderDetails(productOrderIds);
+  const token = await getAccessToken();
+  const now = new Date();
+  const results: ProductOrderDetail[] = [];
+  const seenIds = new Set<string>();
+
+  for (let daysBack = 0; daysBack < LOOKBACK_DAYS; daysBack++) {
+    const from = new Date(now.getTime() - (daysBack + 1) * DAY_MS);
+    const to = new Date(now.getTime() - daysBack * DAY_MS);
+
+    const orders = await fetchOrdersForWindow(token, from, to, "PAYED");
+
+    for (const order of orders) {
+      // 중복 제거 (윈도우 경계에서 같은 주문이 두 번 나올 수 있음)
+      if (!seenIds.has(order.productOrderId)) {
+        seenIds.add(order.productOrderId);
+        results.push(order);
+      }
+    }
+
+    // Rate limit 방지 (일별 요청 간 간격)
+    if (daysBack < LOOKBACK_DAYS - 1) {
+      await new Promise((r) => setTimeout(r, 800));
+    }
+  }
+
+  return results;
 }

@@ -1,3 +1,6 @@
+import { readFileSync } from "fs";
+import { resolve } from "path";
+
 import bcryptjs from "bcryptjs";
 
 import { tokenResponseSchema } from "./types";
@@ -7,6 +10,40 @@ const TOKEN_BUFFER_MS = 60_000; // 만료 1분 전 갱신
 
 // 모듈 레벨 토큰 캐시
 let cachedToken: { accessToken: string; expiresAt: number } | null = null;
+
+/**
+ * .env.local에서 raw 값 직접 읽기.
+ * Next.js의 dotenv-expand가 bcrypt salt 내 '$' 기호를
+ * 쉘 변수로 치환하는 문제를 우회한다.
+ */
+function readRawEnv(key: string): string | undefined {
+  try {
+    const content = readFileSync(
+      resolve(process.cwd(), ".env.local"),
+      "utf8",
+    );
+    for (const line of content.split("\n")) {
+      const trimmed = line.trim();
+      if (trimmed.startsWith("#") || !trimmed.includes("=")) continue;
+      const eqIdx = trimmed.indexOf("=");
+      if (trimmed.slice(0, eqIdx).trim() !== key) continue;
+      let val = trimmed.slice(eqIdx + 1).trim();
+      // 따옴표 제거
+      if (
+        (val.startsWith("'") && val.endsWith("'")) ||
+        (val.startsWith('"') && val.endsWith('"'))
+      ) {
+        val = val.slice(1, -1);
+      }
+      // \$ 이스케이프 처리 (사용자가 이스케이프한 경우 대응)
+      val = val.replace(/\\\$/g, "$");
+      return val;
+    }
+  } catch {
+    // 파일 없으면 process.env 폴백
+  }
+  return undefined;
+}
 
 /**
  * bcrypt 기반 client_secret_sign 생성
@@ -35,7 +72,9 @@ export async function getAccessToken(): Promise<string> {
   }
 
   const clientId = process.env.NAVER_CLIENT_ID;
-  const clientSecret = process.env.NAVER_CLIENT_SECRET;
+  // dotenv-expand가 bcrypt salt의 '$'를 변수 치환하므로 파일에서 직접 읽음
+  const clientSecret =
+    readRawEnv("NAVER_CLIENT_SECRET") ?? process.env.NAVER_CLIENT_SECRET;
   if (!clientId || !clientSecret) {
     throw new Error(
       "NAVER_CLIENT_ID 또는 NAVER_CLIENT_SECRET이 설정되지 않았습니다."
