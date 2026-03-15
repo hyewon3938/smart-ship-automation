@@ -22,8 +22,21 @@
 ## 마일스톤 기록
 
 ### Phase 1: 프로젝트 셋팅
-- **상태:** 예정
-- **내용:** Next.js 초기화, 의존성 설치, DB 스키마, 프로젝트 구조
+- **완료일:** 2026-03-15
+- **PR:** #7
+- **주요 변경:**
+  - Next.js 16 + TypeScript + Tailwind CSS v4 + shadcn/ui 초기화
+  - SQLite + Drizzle ORM 스키마 (orders, settings, bookingLogs)
+  - Playwright, bcryptjs, TanStack Query, Vitest 설정
+  - 프로젝트 디렉토리 구조 확립
+- **기술적 결정:**
+  - serverExternalPackages로 better-sqlite3, playwright 번들링 제외 → 네이티브 바이너리 webpack 충돌 방지
+  - WAL 모드로 SQLite 동시성 향상
+  - Playwright는 chromium만 설치 (경량화)
+  - toast 대신 sonner 사용 (shadcn/ui에서 toast deprecated)
+- **이슈/교훈:**
+  - create-next-app이 최신 버전(v16)으로 설치됨 (계획서는 v15 기준이었으나 v16으로 진행)
+  - 기존 파일(.claude/, CLAUDE.md) 충돌로 임시 디렉토리에서 초기화 후 rsync로 복사
 
 ### Phase 2: 네이버 커머스 API 연동
 - **상태:** 예정
