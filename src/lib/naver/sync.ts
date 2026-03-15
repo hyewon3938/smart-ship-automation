@@ -13,9 +13,10 @@ import type { ProductOrderDetail } from "./types";
  * existing이 있으면 update, 없으면 insert
  */
 function upsertOrder(order: ProductOrderDetail, existing: Order | undefined): void {
-  const address =
-    `${order.shippingAddress.baseAddress} ${order.shippingAddress.detailAddress ?? ""}`.trim();
-  const isNextDay = isNextDayDeliveryEligible(address);
+  const baseAddress = order.shippingAddress.baseAddress;
+  const detailAddress = order.shippingAddress.detailAddress ?? null;
+  const fullAddress = `${baseAddress} ${detailAddress ?? ""}`.trim();
+  const isNextDay = isNextDayDeliveryEligible(fullAddress);
 
   if (existing) {
     db.update(orders)
@@ -27,7 +28,8 @@ function upsertOrder(order: ProductOrderDetail, existing: Order | undefined): vo
         totalPrice: order.totalPaymentAmount,
         recipientName: order.shippingAddress.name,
         recipientPhone: order.shippingAddress.tel1,
-        recipientAddress: address,
+        recipientAddress: baseAddress,
+        recipientAddressDetail: detailAddress,
         recipientZipCode: order.shippingAddress.zipCode,
         isNextDayEligible: isNextDay,
         updatedAt: new Date().toISOString(),
@@ -46,7 +48,8 @@ function upsertOrder(order: ProductOrderDetail, existing: Order | undefined): vo
         totalPrice: order.totalPaymentAmount,
         recipientName: order.shippingAddress.name,
         recipientPhone: order.shippingAddress.tel1,
-        recipientAddress: address,
+        recipientAddress: baseAddress,
+        recipientAddressDetail: detailAddress,
         recipientZipCode: order.shippingAddress.zipCode,
         status: "pending",
         isNextDayEligible: isNextDay,

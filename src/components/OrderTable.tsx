@@ -144,7 +144,10 @@ export function OrderTable({
                 <TableCell>
                   <div className="space-y-0.5">
                     <p className="text-sm">
-                      {truncate(order.recipientAddress, MAX_ADDRESS_LENGTH)}
+                      {truncate(
+                        `${order.recipientAddress} ${order.recipientAddressDetail ?? ""}`.trim(),
+                        MAX_ADDRESS_LENGTH
+                      )}
                     </p>
                     <p className="text-xs text-muted-foreground">
                       {order.recipientZipCode}

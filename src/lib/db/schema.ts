@@ -12,6 +12,7 @@ export const orders = sqliteTable("orders", {
   recipientName: text("recipient_name").notNull(),
   recipientPhone: text("recipient_phone").notNull(),
   recipientAddress: text("recipient_address").notNull(),
+  recipientAddressDetail: text("recipient_address_detail"),
   recipientZipCode: text("recipient_zip_code").notNull(),
   status: text("status", {
     enum: ["pending", "booking", "booked", "failed", "skipped"],
