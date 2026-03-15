@@ -61,19 +61,23 @@ export function BookingConfirmDialog({
         {/* 수령인 목록 */}
         <div className="border rounded-md divide-y text-sm max-h-48 overflow-y-auto">
           {previewOrders.map((order) => (
-            <div
-              key={order.id}
-              className="flex items-center justify-between px-3 py-2"
-            >
-              <span className="font-medium truncate max-w-32">
-                {order.recipientName}
-              </span>
-              <span className="text-muted-foreground text-xs truncate">
-                {order.productName}
-              </span>
-              <span className="text-xs shrink-0 ml-2">
-                {order.selectedDeliveryType === "nextDay" ? "내일배송" : "국내"}
-              </span>
+            <div key={order.id}>
+              <div className="flex items-center justify-between px-3 py-2">
+                <span className="font-medium truncate max-w-32">
+                  {order.recipientName}
+                </span>
+                <span className="text-muted-foreground text-xs truncate">
+                  {order.productName}
+                </span>
+                <span className="text-xs shrink-0 ml-2">
+                  {order.selectedDeliveryType === "nextDay" ? "내일배송" : "국내택배"}
+                </span>
+              </div>
+              {order.shippingMemo && (
+                <p className="px-3 pb-1 text-xs text-muted-foreground truncate">
+                  메모: {order.shippingMemo}
+                </p>
+              )}
             </div>
           ))}
           {remainingCount > 0 && (

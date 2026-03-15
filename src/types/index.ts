@@ -11,6 +11,20 @@ export type OrderStatus = "pending" | "booking" | "booked" | "failed" | "skipped
 /** 택배 유형 */
 export type DeliveryType = "domestic" | "nextDay";
 
+/** orderId 기준 주문 그룹 (같은 배송지 묶음) */
+export interface OrderGroup {
+  orderId: string;
+  orders: Order[];
+  recipientName: string;
+  recipientAddress: string;
+  recipientAddressDetail: string | null;
+  recipientZipCode: string;
+  recipientPhone: string;
+  shippingMemo: string | null;
+  isNextDayEligible: boolean;
+  orderDate: string;
+}
+
 /** 주문 동기화 결과 */
 export interface SyncResult {
   total: number;
