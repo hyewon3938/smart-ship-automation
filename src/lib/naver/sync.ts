@@ -14,8 +14,8 @@ import type { ProductOrderDetail } from "./types";
  */
 function upsertOrder(order: ProductOrderDetail, existing: Order | undefined): void {
   const baseAddress = order.shippingAddress.baseAddress;
-  const detailAddress = order.shippingAddress.detailAddress ?? null;
-  const fullAddress = `${baseAddress} ${detailAddress ?? ""}`.trim();
+  const detailedAddress = order.shippingAddress.detailedAddress ?? null;
+  const fullAddress = `${baseAddress} ${detailedAddress ?? ""}`.trim();
   const isNextDay = isNextDayDeliveryEligible(fullAddress);
 
   if (existing) {
@@ -24,12 +24,12 @@ function upsertOrder(order: ProductOrderDetail, existing: Order | undefined): vo
         orderDate: order.orderDate,
         productName: order.productName,
         quantity: order.quantity,
-        optionInfo: order.optionManageCode ?? null,
+        optionInfo: order.productOption ?? null,
         totalPrice: order.totalPaymentAmount,
         recipientName: order.shippingAddress.name,
         recipientPhone: order.shippingAddress.tel1,
         recipientAddress: baseAddress,
-        recipientAddressDetail: detailAddress,
+        recipientAddressDetail: detailedAddress,
         recipientZipCode: order.shippingAddress.zipCode,
         isNextDayEligible: isNextDay,
         updatedAt: new Date().toISOString(),
@@ -44,12 +44,12 @@ function upsertOrder(order: ProductOrderDetail, existing: Order | undefined): vo
         orderDate: order.orderDate,
         productName: order.productName,
         quantity: order.quantity,
-        optionInfo: order.optionManageCode ?? null,
+        optionInfo: order.productOption ?? null,
         totalPrice: order.totalPaymentAmount,
         recipientName: order.shippingAddress.name,
         recipientPhone: order.shippingAddress.tel1,
         recipientAddress: baseAddress,
-        recipientAddressDetail: detailAddress,
+        recipientAddressDetail: detailedAddress,
         recipientZipCode: order.shippingAddress.zipCode,
         status: "pending",
         isNextDayEligible: isNextDay,
