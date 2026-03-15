@@ -10,7 +10,15 @@
       "Bash(cp -r /tmp/next-init/. /Users/ihyewon/smart-ship-automation/ --backup=none)",
       "Bash(rsync -av --exclude='.git' --exclude='.claude' --exclude='CLAUDE.md' --exclude='docs' /tmp/next-init/ /Users/ihyewon/smart-ship-automation/)",
       "Bash(npm install -D @types/better-sqlite3 @types/bcryptjs drizzle-kit vitest @vitejs/plugin-react)",
-      "Bash(npx playwright install chromium)"
+      "Bash(npx playwright install chromium)",
+      "Bash(npx shadcn@latest add card checkbox badge select table toast dialog --yes)",
+      "Bash(npx shadcn@latest add sonner --yes)",
+      "Bash(npx drizzle-kit generate)",
+      "Bash(npx drizzle-kit migrate)",
+      "Bash(npx tsc --noEmit)",
+      "Bash(git push -u origin chore/1-project-setup)",
+      "Bash(git push origin main)",
+      "Bash(git branch main f79e86b)"
     ]
   }
 }
