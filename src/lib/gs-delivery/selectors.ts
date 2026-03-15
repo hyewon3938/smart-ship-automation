@@ -15,10 +15,13 @@ export const GS_URLS = {
 
 // ── 로그인 ──
 export const LOGIN_SELECTORS = {
-  USERNAME: "#id", // TODO: 실제 셀렉터 확인
-  PASSWORD: "#pw", // TODO: 실제 셀렉터 확인
-  SUBMIT: ".btn-login", // TODO: 실제 셀렉터 확인
-  LOGGED_IN_INDICATOR: ".user-info", // TODO: 로그인 후 나타나는 요소
+  USERNAME: "#memberId",
+  PASSWORD: "#memberKey",
+  SUBMIT: "#memberSubmit",
+  /** 로그인 성공 시 상단에 '마이페이지' 링크가 나타남 */
+  LOGGED_IN_INDICATOR: "a[href*='mypage']",
+  /** Cloudflare Turnstile 캡챠 응답 토큰 */
+  TURNSTILE_RESPONSE: "#memberToken",
 } as const;
 
 // ── 국내택배 예약 폼 ──

@@ -10,6 +10,8 @@ import type { Page } from "playwright";
 /**
  * 현재 로그인 상태를 확인한다.
  * 국내택배 페이지에 접근하여 로그인 여부를 판별.
+ * - 비로그인: "현재 비로그인 상태입니다" 텍스트 표시
+ * - 로그인됨: "마이페이지" 링크 표시
  */
 export async function isLoggedIn(page: Page): Promise<boolean> {
   try {
@@ -18,6 +20,7 @@ export async function isLoggedIn(page: Page): Promise<boolean> {
       await page.goto(GS_URLS.DOMESTIC, { waitUntil: "domcontentloaded" });
     }
 
+    // "마이페이지" 링크가 보이면 로그인 상태
     return await page
       .locator(LOGIN_SELECTORS.LOGGED_IN_INDICATOR)
       .isVisible({ timeout: 3000 })
@@ -30,8 +33,15 @@ export async function isLoggedIn(page: Page): Promise<boolean> {
 /**
  * cvsnet.co.kr에 로그인한다.
  *
- * 캡챠가 있을 경우 사용자가 headed 브라우저에서 직접 풀 때까지
- * 최대 LOGIN_TIMEOUT_MS(60초)간 대기.
+ * Cloudflare Turnstile 캡챠가 있어 headed 브라우저에서
+ * 사용자가 직접 캡챠를 통과해야 할 수 있다.
+ *
+ * 흐름:
+ * 1. 로그인 페이지 이동
+ * 2. ID/PW 입력
+ * 3. Turnstile 캡챠 토큰 대기 (자동 통과 또는 사용자 수동)
+ * 4. 로그인 버튼 클릭
+ * 5. 로그인 성공(마이페이지 링크) 대기
  *
  * @throws 60초 내 로그인 미완료 시 에러
  */
@@ -53,18 +63,49 @@ export async function login(page: Page): Promise<void> {
   await page.locator(LOGIN_SELECTORS.PASSWORD).fill(password);
   await page.waitForTimeout(ACTION_DELAY_MS);
 
+  // Turnstile 캡챠 토큰 대기 (자동 완료되거나 사용자가 수동으로 체크)
+  console.log("[auth] Turnstile 캡챠 대기 중... (자동 통과 또는 브라우저에서 직접 체크)");
+  try {
+    await page.waitForFunction(
+      (selector) => {
+        const el = document.querySelector(selector) as HTMLInputElement | null;
+        return el && el.value.length > 0;
+      },
+      LOGIN_SELECTORS.TURNSTILE_RESPONSE,
+      { timeout: LOGIN_TIMEOUT_MS }
+    );
+    console.log("[auth] Turnstile 캡챠 토큰 확인 완료");
+  } catch {
+    console.warn("[auth] Turnstile 토큰 대기 타임아웃 — 로그인 버튼 클릭 시도");
+  }
+
+  await page.waitForTimeout(ACTION_DELAY_MS);
+
   // 로그인 버튼 클릭
   await page.locator(LOGIN_SELECTORS.SUBMIT).click();
 
-  // 로그인 성공 대기 (캡챠 시 사용자 수동 개입 대기 포함)
+  // 로그인 성공 대기
   try {
-    await page.waitForSelector(LOGIN_SELECTORS.LOGGED_IN_INDICATOR, {
-      timeout: LOGIN_TIMEOUT_MS,
-    });
+    // 방법 1: 마이페이지 링크 등장
+    // 방법 2: 국내택배 예약 페이지로 리다이렉트
+    await Promise.race([
+      page.waitForSelector(LOGIN_SELECTORS.LOGGED_IN_INDICATOR, {
+        timeout: LOGIN_TIMEOUT_MS,
+      }),
+      page.waitForURL("**/reservation-inquiry/**", {
+        timeout: LOGIN_TIMEOUT_MS,
+      }),
+    ]);
+    console.log("[auth] 로그인 성공");
   } catch {
+    // 로그인 실패 원인 확인
+    const bodyText = await page.evaluate(() =>
+      document.body.innerText.substring(0, 300)
+    );
     throw new Error(
       "로그인 실패: 60초 내에 로그인이 완료되지 않았습니다. " +
-        "브라우저 창에서 캡챠를 확인하세요."
+        "브라우저 창에서 캡챠를 확인하세요.\n" +
+        `페이지 내용: ${bodyText}`
     );
   }
 }
