@@ -13,9 +13,10 @@ import type { ProductOrderDetail } from "./types";
  * existing이 있으면 update, 없으면 insert
  */
 function upsertOrder(order: ProductOrderDetail, existing: Order | undefined): void {
-  const address =
-    `${order.shippingAddress.baseAddress} ${order.shippingAddress.detailAddress ?? ""}`.trim();
-  const isNextDay = isNextDayDeliveryEligible(address);
+  const baseAddress = order.shippingAddress.baseAddress;
+  const detailedAddress = order.shippingAddress.detailedAddress ?? null;
+  const fullAddress = `${baseAddress} ${detailedAddress ?? ""}`.trim();
+  const isNextDay = isNextDayDeliveryEligible(fullAddress);
 
   if (existing) {
     db.update(orders)
@@ -23,12 +24,14 @@ function upsertOrder(order: ProductOrderDetail, existing: Order | undefined): vo
         orderDate: order.orderDate,
         productName: order.productName,
         quantity: order.quantity,
-        optionInfo: order.optionManageCode ?? null,
+        optionInfo: order.productOption ?? null,
         totalPrice: order.totalPaymentAmount,
         recipientName: order.shippingAddress.name,
         recipientPhone: order.shippingAddress.tel1,
-        recipientAddress: address,
+        recipientAddress: baseAddress,
+        recipientAddressDetail: detailedAddress,
         recipientZipCode: order.shippingAddress.zipCode,
+        shippingMemo: order.shippingMemo,
         isNextDayEligible: isNextDay,
         updatedAt: new Date().toISOString(),
       })
@@ -42,12 +45,14 @@ function upsertOrder(order: ProductOrderDetail, existing: Order | undefined): vo
         orderDate: order.orderDate,
         productName: order.productName,
         quantity: order.quantity,
-        optionInfo: order.optionManageCode ?? null,
+        optionInfo: order.productOption ?? null,
         totalPrice: order.totalPaymentAmount,
         recipientName: order.shippingAddress.name,
         recipientPhone: order.shippingAddress.tel1,
-        recipientAddress: address,
+        recipientAddress: baseAddress,
+        recipientAddressDetail: detailedAddress,
         recipientZipCode: order.shippingAddress.zipCode,
+        shippingMemo: order.shippingMemo,
         status: "pending",
         isNextDayEligible: isNextDay,
         selectedDeliveryType: isNextDay ? "nextDay" : "domestic",

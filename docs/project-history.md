@@ -60,7 +60,7 @@
 
 ### Phase 3: 대시보드 UI
 - **완료일:** 2026-03-15
-- **PR:** #9
+- **PR:** #11 (원래 #9 → 충돌로 cherry-pick 후 #11로 재생성)
 - **주요 변경:**
   - OrderTable: 체크박스 행 선택/전체 선택, 8개 컬럼 (상품/수량/금액/수령인/배송지/택배유형/상태)
   - StatusBadge: 상태별 색상 뱃지 (대기=회색, 예약중=파랑, 완료=초록, 실패=빨강)
@@ -84,8 +84,51 @@
   - Toaster 미등록 버그 → providers.tsx에 추가 (코드 리뷰에서 발견)
 
 ### Phase 4: GS택배 Playwright 자동화
-- **상태:** 예정
-- **내용:** 로그인, 국내택배/내일배송 예약 폼 자동화
+- **완료일:** 2026-03-15
+- **PR:** #12
+- **주요 변경:**
+  - GS택배(cvsnet.co.kr) 브라우저 자동화 모듈 6개 신규 생성
+  - Playwright headed 모드 브라우저 싱글턴 (세션 재사용)
+  - 로그인 자동화 (CAPTCHA 60초 수동 대기 포함)
+  - 국내택배/내일배송 예약 폼 자동화 (물품정보, 보내는분 주소록, 받는분 정보 입력)
+  - 순차 예약 큐(워커): fire-and-forget 패턴으로 1건씩 처리
+  - 주문 테이블에 recipientAddressDetail 컬럼 추가 (주소 분리 저장)
+  - 네이버 동기화 시 baseAddress/detailAddress 분리 저장으로 변경
+  - 예약 실패 시 스크린샷 자동 저장 (data/screenshots/)
+  - 예약 로그 기록 (booking_logs 테이블 활용)
+  - 서버 재시작 시 stuck 복구 (booking → pending)
+- **기술적 결정:**
+  - headed 모드 사용 → CAPTCHA 등 수동 개입이 필요할 수 있어 브라우저를 보이게 실행
+  - 모듈 레벨 싱글턴으로 Browser/BrowserContext 재사용 → GS택배 로그인 세션 유지
+  - 인메모리 큐(배열) 사용 → 1인용 로컬 앱이므로 외부 큐 서비스 불필요
+  - 주소 분리 저장 → 네이버 API가 base/detail을 별도 제공하는데, 합치면 GS택배 폼 입력 시 분리 불가능
+  - CSS 셀렉터를 selectors.ts에 중앙 집중 → 사이트 구조 변경 시 한 곳만 수정
+- **이슈/교훈:**
+  - **CSS 셀렉터는 TODO 플레이스홀더 상태** → 실제 cvsnet.co.kr 사이트에서 검증 후 업데이트 필요
+  - Phase 2에서 sync.ts가 주소를 합쳐서 저장하고 있었음 → 사후 분리 불가능하여 스키마 변경 + 동기화 로직 수정
+  - 전화번호 하이픈 제거 처리 (네이버 API 형식 → GS택배 입력 형식)
+
+### UI 개선: 주문 그룹핑 + 배송메모 + 한글화
+- **완료일:** 2026-03-15
+- **PR:** (현재 브랜치에 포함)
+- **주요 변경:**
+  - 네이버 API를 last-changed-statuses에서 조건형 주문 조회 API로 전환
+  - 24시간 단위 일별 스캔으로 7일 lookback 구현
+  - DB에 shippingMemo 컬럼 추가 + 동기화 시 저장
+  - OrderTable을 orderId 기준 그룹으로 재구성 (펼침/접힘)
+  - 그룹 헤더에 수령인/배송지/택배유형/내일배송 뱃지/상품수/상태 표시
+  - 배송메모를 그룹 헤더 아래에 표시
+  - 택배유형 한글화 (domestic → 국내택배, nextDay → 내일배송)
+  - 내일배송 가능/불가 뱃지를 테이블에서 바로 확인 가능
+  - BookingTask에 shippingMemo 전달
+  - groupOrdersByOrderId 유틸 + vitest 테스트 5건
+- **기술적 결정:**
+  - 조건형 API(GET /v1/pay-order/seller/product-orders) 사용 → 현재 상태 기반 조회로 안정적
+  - from~to 24시간 제약 → 일별 순회로 해결, 윈도우 경계 중복은 Set으로 제거
+  - auth.ts readRawEnv() → dotenv-expand가 bcrypt salt의 $ 기호를 치환하는 문제 우회
+- **이슈/교훈:**
+  - last-changed-statuses는 상태 변경 이벤트만 추적 → 현재 PAYED 상태인 주문을 못 찾는 근본 문제 발견
+  - 조건형 API에 timezone offset(+09:00)을 쓰면 400 에러 → UTC ISO format(.toISOString()) 사용
 
 ### Phase 5: 설정 페이지
 - **상태:** 예정

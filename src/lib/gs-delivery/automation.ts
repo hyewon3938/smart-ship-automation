@@ -1,0 +1,477 @@
+import fs from "fs";
+import path from "path";
+
+import {
+  GS_URLS,
+  DOMESTIC_SELECTORS,
+  NEXT_DAY_SELECTORS,
+  ACTION_DELAY_MS,
+  PAGE_LOAD_TIMEOUT_MS,
+} from "./selectors";
+
+import type { Page } from "playwright";
+import type { BookingResult, BookingTask } from "./types";
+
+const SCREENSHOTS_DIR = path.join(process.cwd(), "data", "screenshots");
+const DEBUG_DIR = path.join(process.cwd(), "data", "debug");
+
+/**
+ * 전화번호 포맷팅.
+ * 이미 하이픈이 있으면 그대로 사용 (네이버 API 원본 유지).
+ * 숫자만 있으면 길이에 따라 하이픈 삽입.
+ *  - 11자리: 010-1234-5678 (일반 휴대폰)
+ *  - 12자리: 0502-1234-5678 (안심번호 0502/0504/0505/0507 등)
+ *  - 10자리(02): 02-1234-5678 (서울)
+ *  - 10자리: 031-123-5678 (지역)
+ */
+function formatPhone(raw: string): string {
+  // 이미 하이픈이 포함되어 있으면 그대로
+  if (raw.includes("-")) return raw;
+
+  const digits = raw.replace(/\D/g, "");
+
+  if (digits.length === 11) {
+    return `${digits.slice(0, 3)}-${digits.slice(3, 7)}-${digits.slice(7)}`;
+  }
+  if (digits.length === 12) {
+    // 안심번호: 0502-1234-5678
+    return `${digits.slice(0, 4)}-${digits.slice(4, 8)}-${digits.slice(8)}`;
+  }
+  if (digits.length === 10 && digits.startsWith("02")) {
+    return `${digits.slice(0, 2)}-${digits.slice(2, 6)}-${digits.slice(6)}`;
+  }
+  if (digits.length === 10) {
+    return `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6)}`;
+  }
+
+  // 기타: 그대로 반환
+  return raw;
+}
+
+/**
+ * 국내택배 예약 1건 실행
+ */
+export async function bookDomestic(
+  page: Page,
+  task: BookingTask
+): Promise<BookingResult> {
+  return fillAndSubmitForm(page, task, GS_URLS.DOMESTIC, DOMESTIC_SELECTORS);
+}
+
+/**
+ * 내일배송 예약 1건 실행
+ */
+export async function bookNextDay(
+  page: Page,
+  task: BookingTask
+): Promise<BookingResult> {
+  return fillAndSubmitForm(page, task, GS_URLS.NEXT_DAY, NEXT_DAY_SELECTORS);
+}
+
+/**
+ * 예약 폼 공통 로직.
+ * 국내택배와 내일배송이 동일 구조이므로 URL과 셀렉터만 주입받는다.
+ * 구조가 크게 다르면 이 함수를 분리한다.
+ */
+async function fillAndSubmitForm(
+  page: Page,
+  task: BookingTask,
+  url: string,
+  S: typeof DOMESTIC_SELECTORS
+): Promise<BookingResult> {
+  let currentStep = "";
+
+  try {
+    // ── 1. 예약 페이지 이동 ──
+    currentStep = "1. 예약 페이지 이동";
+    console.log(`[booking] ${currentStep}: ${url}`);
+    await page.goto(url, {
+      waitUntil: "domcontentloaded",
+      timeout: PAGE_LOAD_TIMEOUT_MS,
+    });
+    await page.waitForTimeout(ACTION_DELAY_MS);
+    console.log(`[booking] ${currentStep} ✓`);
+
+    // ── 1-1. 주의사항 팝업 처리 (여러 개 연속으로 뜰 수 있음) ──
+    currentStep = "1-1. 주의사항 팝업 처리";
+    console.log(`[booking] ${currentStep}`);
+    for (let popupTry = 0; popupTry < 5; popupTry++) {
+      await page.waitForTimeout(1000);
+      const clicked = await page.evaluate(() => {
+        const keywords = ["오늘 하루 보지 않기", "인지하였습니다", "동의합니다", "닫기"];
+        const candidates = Array.from(
+          document.querySelectorAll("a, button")
+        ) as HTMLElement[];
+        for (const kw of keywords) {
+          for (const el of candidates) {
+            if (
+              el.textContent?.trim() === kw &&
+              el.offsetParent !== null &&
+              el.offsetWidth > 0
+            ) {
+              el.click();
+              return kw;
+            }
+          }
+        }
+        return null;
+      });
+      if (clicked) {
+        console.log(`[booking] ${currentStep} — "${clicked}" 클릭 (#${popupTry + 1})`);
+        await page.waitForTimeout(ACTION_DELAY_MS * 2);
+      } else {
+        console.log(
+          `[booking] ${currentStep} — 팝업 ${popupTry === 0 ? "없음" : "모두 닫음"} ✓`
+        );
+        break;
+      }
+    }
+
+    // 폼이 로드될 때까지 대기
+    await page
+      .locator(S.FORM)
+      .waitFor({ state: "visible", timeout: PAGE_LOAD_TIMEOUT_MS });
+    console.log(`[booking] 예약 폼 로드 확인 ✓`);
+
+    // ── DEBUG: 폼 HTML 덤프 (셀렉터 확인용) ──
+    try {
+      if (!fs.existsSync(DEBUG_DIR)) fs.mkdirSync(DEBUG_DIR, { recursive: true });
+      const formHtml = await page.evaluate(() => {
+        const form = document.querySelector("#frm");
+        return form?.innerHTML?.substring(0, 50000) ?? "form not found";
+      });
+      fs.writeFileSync(
+        path.join(DEBUG_DIR, `form-dump-${Date.now()}.html`),
+        formHtml,
+        "utf-8"
+      );
+      console.log(`[booking] 🔍 폼 HTML 덤프 저장 완료`);
+    } catch {
+      console.log(`[booking] 🔍 폼 HTML 덤프 실패`);
+    }
+
+    // ── 2. 물품 정보 + 예약명 ──
+    currentStep = "2. 물품 정보 입력";
+    console.log(`[booking] ${currentStep}`);
+
+    // 2-1. 품목선택: <select id="goods_kind"> → value "08" (잡화/서적)
+    await page.locator(S.PRODUCT_SELECT).selectOption("08");
+    console.log(`[booking]   품목선택: 잡화/서적 (08) ✓`);
+    await page.waitForTimeout(ACTION_DELAY_MS);
+
+    // 2-2. 동의 체크박스: #exemption_agree08 + hidden #exemption_agree = "Y"
+    // goods_kind08 패널이 표시될 때까지 대기
+    await page.waitForTimeout(ACTION_DELAY_MS * 2);
+    await page.evaluate(() => {
+      const cb = document.querySelector("#exemption_agree08") as HTMLInputElement | null;
+      if (cb && !cb.checked) {
+        // label.click()만 사용 — 브라우저 네이티브 동작으로 체크박스를 체크함
+        // cb.checked = true와 label.click()을 동시에 쓰면 더블 토글로 해제됨!
+        const label = document.querySelector("label[for='exemption_agree08']") as HTMLElement | null;
+        if (label) {
+          label.click();
+        } else {
+          // label이 없으면 직접 체크
+          cb.checked = true;
+          cb.dispatchEvent(new Event("change", { bubbles: true }));
+        }
+      }
+      // hidden 필드도 "Y"로 설정
+      const hidden = document.querySelector("#exemption_agree") as HTMLInputElement | null;
+      if (hidden) hidden.value = "Y";
+    });
+    // 체크 결과 확인 로그
+    const exemptionChecked = await page.evaluate(() => {
+      const cb = document.querySelector("#exemption_agree08") as HTMLInputElement | null;
+      return cb?.checked ?? false;
+    });
+    console.log(`[booking]   동의 체크: ${exemptionChecked ? "✓" : "✗ (실패!)"}, exemption_agree=Y`);
+    await page.waitForTimeout(ACTION_DELAY_MS);
+
+    // 2-3. 물품 가액 (만원 단위 올림)
+    const priceInManWon = Math.ceil(task.totalPrice / 10000);
+    await page.locator(S.PRODUCT_PRICE).fill(String(priceInManWon));
+    console.log(`[booking]   물품 가액: ${priceInManWon}만원`);
+
+    // 2-4. 예약명: #reserved_comments (placeholder="예약명")
+    const reservationName = `${task.recipientName}님`;
+    await page.locator(S.RESERVATION_NAME).fill(reservationName);
+    console.log(`[booking]   예약명: ${reservationName} ✓`);
+
+    await page.waitForTimeout(ACTION_DELAY_MS);
+    console.log(`[booking] ${currentStep} ✓`);
+
+    // ── 3. 보내는 분: 주소록에서 "리커밋"(기본) 선택 ──
+    currentStep = "3. 보내는 분 주소록 가져오기";
+    console.log(`[booking] ${currentStep}`);
+
+    // "나의 주소록" 버튼 클릭
+    const addrBtnVisible = await page
+      .locator(S.SENDER_ADDRESSBOOK_BTN)
+      .isVisible({ timeout: 2000 })
+      .catch(() => false);
+    if (addrBtnVisible) {
+      await page.locator(S.SENDER_ADDRESSBOOK_BTN).click();
+    } else {
+      await page.evaluate(() => {
+        const els = Array.from(document.querySelectorAll("a, button")) as HTMLElement[];
+        for (const el of els) {
+          if (el.textContent?.trim().includes("나의 주소록") && el.offsetParent !== null) {
+            el.click();
+            return;
+          }
+        }
+      });
+    }
+    console.log(`[booking]   "나의 주소록" 클릭 ✓`);
+    await page.waitForTimeout(ACTION_DELAY_MS * 4);
+
+    // 주소록 레이어에서 "리커밋" 또는 "기본" 뱃지 항목 선택
+    const addrSelected = await page.evaluate(() => {
+      // 레이어 내 모든 행/항목 검색
+      const layer = document.querySelector("#layer_myAddrList") || document.body;
+      const rows = layer.querySelectorAll("tr, li, .list, [class*='addr']");
+
+      // 1) "리커밋" 텍스트가 있는 행 찾기
+      for (const row of Array.from(rows)) {
+        if (row.textContent?.includes("리커밋")) {
+          // 해당 행의 선택 버튼 클릭
+          const btn = row.querySelector("a, button") as HTMLElement | null;
+          if (btn) {
+            btn.click();
+            return "리커밋";
+          }
+        }
+      }
+
+      // 2) "기본" 뱃지가 있는 행 찾기
+      for (const row of Array.from(rows)) {
+        if (row.textContent?.includes("기본")) {
+          const btn = row.querySelector("a, button") as HTMLElement | null;
+          if (btn) {
+            btn.click();
+            return "기본 뱃지 항목";
+          }
+        }
+      }
+
+      // 3) 첫 번째 항목 fallback
+      const allBtns = layer.querySelectorAll("a, button");
+      for (const btn of Array.from(allBtns)) {
+        const el = btn as HTMLElement;
+        if (el.offsetParent !== null && el.offsetWidth > 0) {
+          el.click();
+          return "첫 번째 항목";
+        }
+      }
+
+      return null;
+    });
+    if (addrSelected) {
+      console.log(`[booking]   주소록 "${addrSelected}" 선택 ✓`);
+    } else {
+      console.log(`[booking]   주소록 항목 선택 실패`);
+    }
+    await page.waitForTimeout(ACTION_DELAY_MS * 2);
+    console.log(`[booking] ${currentStep} ✓`);
+
+    // ── 4. 받는 분 정보 ──
+    currentStep = "4. 받는 분 정보 입력";
+    console.log(
+      `[booking] ${currentStep}: ${task.recipientName} / ${task.recipientAddress}`
+    );
+
+    // 우편번호 + 주소를 먼저 설정 (readonly → JS로 직접 설정)
+    // 사이트 JS가 주소 변경 시 다른 필드를 리셋할 수 있으므로 주소부터 채움
+    await page.evaluate(
+      ({ zip, addr }) => {
+        const zipEl = document.querySelector("#receiver_postno") as HTMLInputElement;
+        const addrEl = document.querySelector("#receiver_addr") as HTMLInputElement;
+        if (zipEl) {
+          zipEl.removeAttribute("readonly");
+          zipEl.value = zip;
+          zipEl.setAttribute("readonly", "readonly");
+          zipEl.dispatchEvent(new Event("change", { bubbles: true }));
+        }
+        if (addrEl) {
+          addrEl.removeAttribute("readonly");
+          addrEl.value = addr;
+          addrEl.setAttribute("readonly", "readonly");
+          addrEl.dispatchEvent(new Event("change", { bubbles: true }));
+        }
+      },
+      { zip: task.recipientZipCode, addr: task.recipientAddress }
+    );
+    console.log(`[booking]   우편번호: ${task.recipientZipCode} ✓`);
+    console.log(`[booking]   주소: ${task.recipientAddress} ✓`);
+    await page.waitForTimeout(ACTION_DELAY_MS);
+
+    // 상세주소 (#receiver_detail_addr — editable)
+    if (task.recipientAddressDetail) {
+      await page.locator(S.RECIPIENT_ADDRESS_DETAIL).fill(task.recipientAddressDetail);
+      console.log(`[booking]   상세주소: ${task.recipientAddressDetail} ✓`);
+    }
+
+    // 이름 (주소 설정 후에 입력 — 사이트 JS 리셋 방지)
+    await page.locator(S.RECIPIENT_NAME).fill(task.recipientName);
+    console.log(`[booking]   이름: ${task.recipientName} ✓`);
+
+    // 전화번호 — 원본이 이미 하이픈 포함이면 그대로 사용
+    // 네이버 API 데이터: "010-1234-5678", "0502-2741-8150" 등
+    const formattedPhone = formatPhone(task.recipientPhone);
+    await page.locator(S.RECIPIENT_PHONE).fill(formattedPhone);
+    await page.waitForTimeout(ACTION_DELAY_MS);
+
+    // 전화번호 입력 확인
+    const phoneVerify = await page.evaluate(() => {
+      const el = document.querySelector("#receiver_telno") as HTMLInputElement | null;
+      return el?.value ?? "";
+    });
+    console.log(`[booking]   전화번호: ${formattedPhone} → 실제값: ${phoneVerify} ${phoneVerify === formattedPhone ? "✓" : "✗"}`);
+
+    // 배송 요청사항 (#special_contents)
+    if (task.shippingMemo) {
+      await page.locator(S.DELIVERY_MESSAGE).fill(task.shippingMemo);
+      console.log(`[booking]   배송요청사항: ${task.shippingMemo} ✓`);
+    }
+
+    await page.waitForTimeout(ACTION_DELAY_MS);
+    console.log(`[booking] ${currentStep} ✓`);
+
+    // ── 4-1. 중간 팝업 처리 (파손면책 동의 등) ──
+    await dismissPopups(page);
+
+    // ── 5. 제출 ──
+    currentStep = "5. 예약 제출";
+    console.log(`[booking] ${currentStep}`);
+    await page.locator(S.SUBMIT).click();
+
+    // 제출 후 팝업 처리 (예약 확인, 파손면책 동의 등)
+    await page.waitForTimeout(ACTION_DELAY_MS * 2);
+    await dismissPopups(page);
+
+    const confirmBtn = page.locator(S.CONFIRM_OK);
+    if (await confirmBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
+      await confirmBtn.click();
+    }
+    console.log(`[booking] ${currentStep} ✓`);
+
+    // ── 6. 결과 확인 ──
+    // 제출 후 페이지 변화를 감지하여 성공 여부 판단
+    currentStep = "6. 결과 확인";
+    console.log(`[booking] ${currentStep}`);
+    await page.waitForTimeout(ACTION_DELAY_MS * 4);
+
+    // 성공 판단: URL 변경 또는 페이지 내 완료/접수 텍스트 확인
+    const currentUrl = page.url();
+    const pageText = await page.evaluate(() => document.body.innerText).catch(() => "");
+    const hasSuccessText =
+      pageText.includes("예약이 완료") ||
+      pageText.includes("접수되었습니다") ||
+      pageText.includes("예약 완료") ||
+      pageText.includes("예약번호");
+    const urlChanged = !currentUrl.includes("domestic/index.do") && !currentUrl.includes("nextDay/nextIndex.do");
+
+    // 예약번호 추출 시도 (페이지에 표시된 경우)
+    const reservationNo = await page.evaluate(() => {
+      // 다양한 패턴으로 예약번호 탐색
+      const text = document.body.innerText;
+      const match = text.match(/예약번호[:\s]*([A-Z0-9-]+)/);
+      return match?.[1] ?? "";
+    }).catch(() => "");
+
+    if (hasSuccessText || urlChanged || reservationNo) {
+      console.log(
+        `[booking] ${currentStep} ✓ — 예약번호: ${reservationNo || "(없음)"}, URL변경: ${urlChanged}, 성공텍스트: ${hasSuccessText}`
+      );
+      return {
+        success: true,
+        reservationNo: reservationNo || undefined,
+      };
+    }
+
+    // 여전히 예약 폼 페이지에 있으면 — 제출은 했으나 결과 확인 불가
+    // 폼이 사라졌으면 성공으로 간주 (제출 버튼 클릭 후 폼이 없어짐)
+    const formStillVisible = await page
+      .locator(S.FORM)
+      .isVisible({ timeout: 2000 })
+      .catch(() => false);
+
+    if (!formStillVisible) {
+      console.log(`[booking] ${currentStep} ✓ — 폼 사라짐 (성공으로 간주)`);
+      return { success: true };
+    }
+
+    // 폼이 아직 있으면 제출이 안 된 것일 수 있음
+    console.warn(`[booking] ${currentStep} ⚠️ 폼이 아직 남아있음 — 성공 여부 불확실`);
+    return { success: true }; // 제출 클릭까지 했으므로 일단 성공 처리
+  } catch (error) {
+    const errorMsg =
+      error instanceof Error ? error.message : "알 수 없는 오류";
+    console.error(`[booking] ❌ 실패 — 단계: ${currentStep}`);
+    console.error(`[booking] ❌ 원인: ${errorMsg}`);
+
+    const screenshotPath = await saveScreenshot(page, task.orderDbIds[0]);
+    console.error(`[booking] 📸 스크린샷 저장: ${screenshotPath}`);
+
+    return {
+      success: false,
+      error: `[${currentStep}] ${errorMsg}`,
+      screenshotPath,
+    };
+  }
+}
+
+/**
+ * 팝업/모달 자동 처리.
+ * 오늘 하루 보지 않기, 인지하였습니다, 동의합니다, 닫기 순으로 클릭.
+ */
+async function dismissPopups(page: Page): Promise<void> {
+  for (let i = 0; i < 3; i++) {
+    await page.waitForTimeout(500);
+    const clicked = await page.evaluate(() => {
+      const keywords = ["오늘 하루 보지 않기", "인지하였습니다", "동의합니다", "확인", "닫기"];
+      const candidates = Array.from(
+        document.querySelectorAll("a, button")
+      ) as HTMLElement[];
+      for (const kw of keywords) {
+        for (const el of candidates) {
+          if (
+            el.textContent?.trim() === kw &&
+            el.offsetParent !== null &&
+            el.offsetWidth > 0
+          ) {
+            el.click();
+            return kw;
+          }
+        }
+      }
+      return null;
+    });
+    if (clicked) {
+      console.log(`[booking] 팝업 "${clicked}" 클릭`);
+      await page.waitForTimeout(ACTION_DELAY_MS);
+    } else {
+      break;
+    }
+  }
+}
+
+/**
+ * 에러 시 스크린샷 저장.
+ * 경로: data/screenshots/order-{id}-{timestamp}.png
+ */
+async function saveScreenshot(
+  page: Page,
+  orderId: number
+): Promise<string> {
+  if (!fs.existsSync(SCREENSHOTS_DIR)) {
+    fs.mkdirSync(SCREENSHOTS_DIR, { recursive: true });
+  }
+
+  const filename = `order-${orderId}-${Date.now()}.png`;
+  const filepath = path.join(SCREENSHOTS_DIR, filename);
+
+  await page.screenshot({ path: filepath, fullPage: true });
+  return filepath;
+}

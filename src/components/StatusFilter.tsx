@@ -24,11 +24,10 @@ const TABS: {
   label: string;
   countKey: keyof StatusCount;
 }[] = [
-  { key: undefined, label: "전체", countKey: "all" },
   { key: "pending", label: "대기", countKey: "pending" },
-  { key: "booking", label: "예약중", countKey: "booking" },
   { key: "booked", label: "완료", countKey: "booked" },
   { key: "failed", label: "실패", countKey: "failed" },
+  { key: undefined, label: "전체", countKey: "all" },
 ];
 
 export function StatusFilter({
