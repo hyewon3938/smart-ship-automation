@@ -40,34 +40,6 @@ export function useSyncOrders() {
   });
 }
 
-/** 택배 유형 변경 */
-export function useUpdateDeliveryType() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async ({
-      id,
-      deliveryType,
-    }: {
-      id: number;
-      deliveryType: DeliveryType;
-    }) => {
-      const res = await fetch(`/api/orders/${id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ selectedDeliveryType: deliveryType }),
-      });
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || "택배 유형 변경 실패");
-      }
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["orders"] });
-    },
-  });
-}
-
 /** 주문 그룹 상태 수동 변경 */
 export function useUpdateGroupStatus() {
   const queryClient = useQueryClient();

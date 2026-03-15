@@ -16,35 +16,6 @@ export function getOrders(status?: string) {
   return query.all();
 }
 
-/** 단일 주문 조회 */
-export function getOrderById(id: number) {
-  return db.select().from(orders).where(eq(orders.id, id)).get();
-}
-
-/** 택배 유형 변경 */
-export function updateDeliveryType(id: number, deliveryType: DeliveryType) {
-  const order = getOrderById(id);
-  if (!order) throw new Error(`주문을 찾을 수 없습니다: ${id}`);
-  if (order.status !== "pending") {
-    throw new Error(
-      `대기 상태의 주문만 변경할 수 있습니다 (현재: ${order.status})`
-    );
-  }
-  if (deliveryType === "nextDay" && !order.isNextDayEligible) {
-    throw new Error("내일배송 불가 지역입니다");
-  }
-
-  db.update(orders)
-    .set({
-      selectedDeliveryType: deliveryType,
-      updatedAt: new Date().toISOString(),
-    })
-    .where(eq(orders.id, id))
-    .run();
-
-  return getOrderById(id);
-}
-
 /** 선택 주문 예약 시작 (상태 → booking) */
 export function bookOrders(orderIds: number[]) {
   if (orderIds.length === 0) throw new Error("예약할 주문을 선택해주세요");
@@ -84,16 +55,6 @@ export function bookOrders(orderIds: number[]) {
 /** 복수 주문 조회 (워커에서 사용) */
 export function getOrdersByIds(ids: number[]) {
   return db.select().from(orders).where(inArray(orders.id, ids)).all();
-}
-
-/** 주문 상태 업데이트 — 단일 ID (하위호환용) */
-export function updateOrderStatus(
-  id: number,
-  status: OrderStatus,
-  bookingResult?: string,
-  bookingReservationNo?: string
-): void {
-  updateOrderStatusBatch([id], status, bookingResult, bookingReservationNo);
 }
 
 /** 주문 상태 업데이트 — 여러 ID 일괄 (같은 orderId 그룹) */
