@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { bookOrders } from "@/lib/orders";
+import { bookOrders, getOrdersByIds } from "@/lib/orders";
+import { enqueueBookings } from "@/lib/gs-delivery/worker";
+
+import type { BookingTask } from "@/lib/gs-delivery/types";
 
 export async function POST(request: NextRequest) {
   try {
@@ -13,7 +16,26 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // 1. 상태 → booking (기존 로직)
     const result = bookOrders(orderIds);
+
+    // 2. 워커에 예약 작업 전달 (비동기, 즉시 반환)
+    const targetOrders = getOrdersByIds(orderIds);
+    const tasks: BookingTask[] = targetOrders.map((order) => ({
+      orderId: order.id,
+      recipientName: order.recipientName,
+      recipientPhone: order.recipientPhone,
+      recipientAddress: order.recipientAddress,
+      recipientAddressDetail: order.recipientAddressDetail ?? null,
+      recipientZipCode: order.recipientZipCode,
+      deliveryType: order.selectedDeliveryType as "domestic" | "nextDay",
+      productName: order.productName,
+      totalPrice: order.totalPrice ?? 0,
+      quantity: order.quantity,
+    }));
+
+    enqueueBookings(tasks);
+
     return NextResponse.json({
       message: `${result.count}건 예약이 시작되었습니다`,
       ...result,

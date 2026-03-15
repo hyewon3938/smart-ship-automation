@@ -1,7 +1,7 @@
 import { desc, eq, inArray } from "drizzle-orm";
 
 import { db } from "@/lib/db";
-import { orders } from "@/lib/db/schema";
+import { bookingLogs, orders } from "@/lib/db/schema";
 
 import type { DeliveryType, OrderStatus } from "@/types";
 
@@ -76,4 +76,65 @@ export function bookOrders(orderIds: number[]) {
     .run();
 
   return { count: orderIds.length };
+}
+
+/** 복수 주문 조회 (워커에서 사용) */
+export function getOrdersByIds(ids: number[]) {
+  return db.select().from(orders).where(inArray(orders.id, ids)).all();
+}
+
+/** 주문 상태 업데이트 (워커 결과 반영) */
+export function updateOrderStatus(
+  id: number,
+  status: OrderStatus,
+  bookingResult?: string,
+  bookingReservationNo?: string
+): void {
+  db.update(orders)
+    .set({
+      status,
+      bookingResult: bookingResult ?? null,
+      bookingReservationNo: bookingReservationNo ?? null,
+      updatedAt: new Date().toISOString(),
+    })
+    .where(eq(orders.id, id))
+    .run();
+}
+
+/** 예약 로그 기록 */
+export function addBookingLog(
+  orderId: number,
+  action: string,
+  detail?: string,
+  screenshotPath?: string
+): void {
+  db.insert(bookingLogs)
+    .values({
+      orderId,
+      action,
+      detail: detail ?? null,
+      screenshotPath: screenshotPath ?? null,
+    })
+    .run();
+}
+
+/**
+ * "booking" 상태로 멈춘 주문을 "pending"으로 복구.
+ * 서버 재시작 시 워커 초기화에서 호출.
+ */
+export function recoverStuckBookings(): number {
+  const stuck = db
+    .select()
+    .from(orders)
+    .where(eq(orders.status, "booking" as OrderStatus))
+    .all();
+
+  if (stuck.length === 0) return 0;
+
+  db.update(orders)
+    .set({ status: "pending", updatedAt: new Date().toISOString() })
+    .where(eq(orders.status, "booking" as OrderStatus))
+    .run();
+
+  return stuck.length;
 }

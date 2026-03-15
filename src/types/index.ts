@@ -24,3 +24,13 @@ export interface OrdersResponse {
   orders: Order[];
   lastSyncTime: string | null;
 }
+
+/** 예약 로그 항목 */
+export interface BookingLogEntry {
+  id: number;
+  orderId: number;
+  action: string;
+  detail: string | null;
+  screenshotPath: string | null;
+  createdAt: string;
+}
