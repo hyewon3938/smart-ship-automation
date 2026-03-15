@@ -84,51 +84,47 @@
   - Toaster 미등록 버그 → providers.tsx에 추가 (코드 리뷰에서 발견)
 
 ### Phase 4: GS택배 Playwright 자동화
-- **완료일:** 2026-03-15
+- **완료일:** 2026-03-16
 - **PR:** #12
 - **주요 변경:**
-  - GS택배(cvsnet.co.kr) 브라우저 자동화 모듈 6개 신규 생성
-  - Playwright headed 모드 브라우저 싱글턴 (세션 재사용)
-  - 로그인 자동화 (CAPTCHA 60초 수동 대기 포함)
-  - 국내택배/내일배송 예약 폼 자동화 (물품정보, 보내는분 주소록, 받는분 정보 입력)
-  - 순차 예약 큐(워커): fire-and-forget 패턴으로 1건씩 처리
-  - 주문 테이블에 recipientAddressDetail 컬럼 추가 (주소 분리 저장)
-  - 네이버 동기화 시 baseAddress/detailAddress 분리 저장으로 변경
-  - 예약 실패 시 스크린샷 자동 저장 (data/screenshots/)
-  - 예약 로그 기록 (booking_logs 테이블 활용)
-  - 서버 재시작 시 stuck 복구 (booking → pending)
+  - **GS택배 자동화 모듈** (auth, automation, browser, selectors, types, worker)
+    - cvsnet.co.kr 로그인 (Cloudflare Turnstile 캡챠 60초 수동 통과 대기)
+    - 국내택배/내일배송 예약 폼 자동화 (물품정보, 보내는분 주소록, 받는분 정보)
+    - 배송요청사항 폼 입력 (`#special_contents`), 전화번호 포맷팅 (안심번호 0502 포함)
+    - 멀티 전략 예약 성공 감지 (URL 변경 / 텍스트 / 폼 가시성)
+    - Playwright headed 모드 브라우저 싱글턴 + 쿠키 기반 세션 유지
+  - **예약 워커**
+    - orderId 기준 그룹 예약 (같은 주문 = 1건 택배, `BookingTask.orderDbIds`)
+    - 개별 실패 시 나머지 건 계속 처리, 브라우저 크래시 시 큐 드레인
+    - 서버 재시작 시 "booking" 상태 주문 자동 복구 (`recoverStuckBookings`)
+  - **대시보드 UI 전면 개선**
+    - OrderTable: orderId 기준 그룹핑 + 펼침/접힘 상품 리스트
+    - 그룹 레벨 택배유형 선택 / 상태 수동 편집 (pending/booked/failed)
+    - 한글 택배유형 + 내일배송 가능/불가 뱃지 + 그룹별 합계 금액
+    - 예약 완료 후 자동 탭 전환 (2-phase 감지: waiting → monitoring)
+    - 상태 필터 간소화: 대기/완료/실패/전체 (기본: 대기)
+    - 실패 건 재예약 지원
+  - **DB / API**
+    - recipientAddressDetail, shippingMemo 컬럼 추가
+    - 그룹 상태/택배유형 일괄 변경 API (`PATCH /api/orders/group`)
+    - 배치 상태 업데이트 (`updateOrderStatusBatch`), dead code 정리
+  - **네이버 API 리팩토링**
+    - 조건형 주문 조회 API로 전환 (7일간 PAYED 주문 스캔)
+    - dotenv-expand bcrypt salt 충돌 우회 (readRawEnv)
 - **기술적 결정:**
-  - headed 모드 사용 → CAPTCHA 등 수동 개입이 필요할 수 있어 브라우저를 보이게 실행
-  - 모듈 레벨 싱글턴으로 Browser/BrowserContext 재사용 → GS택배 로그인 세션 유지
-  - 인메모리 큐(배열) 사용 → 1인용 로컬 앱이므로 외부 큐 서비스 불필요
-  - 주소 분리 저장 → 네이버 API가 base/detail을 별도 제공하는데, 합치면 GS택배 폼 입력 시 분리 불가능
-  - CSS 셀렉터를 selectors.ts에 중앙 집중 → 사이트 구조 변경 시 한 곳만 수정
+  - headed 모드 → CAPTCHA 수동 개입 필요, 브라우저 보이게 실행
+  - 인메모리 큐 → 1인용 로컬 앱이므로 외부 큐 불필요
+  - CSS 셀렉터 중앙 집중 (selectors.ts) → 사이트 변경 시 한 곳만 수정
+  - 2-phase 예약 완료 감지 → React Query 캐시 타이밍 문제 해결
+    - Phase 1("waiting"): "booking" 상태가 데이터에 나타날 때까지 대기
+    - Phase 2("monitoring"): "booking"이 사라지면 완료 탭 전환 + 캐시 무효화
+  - 조건형 API 전환 → last-changed-statuses는 현재 PAYED 상태를 못 찾는 근본 문제
 - **이슈/교훈:**
-  - **CSS 셀렉터는 TODO 플레이스홀더 상태** → 실제 cvsnet.co.kr 사이트에서 검증 후 업데이트 필요
-  - Phase 2에서 sync.ts가 주소를 합쳐서 저장하고 있었음 → 사후 분리 불가능하여 스키마 변경 + 동기화 로직 수정
-  - 전화번호 하이픈 제거 처리 (네이버 API 형식 → GS택배 입력 형식)
-
-### UI 개선: 주문 그룹핑 + 배송메모 + 한글화
-- **완료일:** 2026-03-15
-- **PR:** (현재 브랜치에 포함)
-- **주요 변경:**
-  - 네이버 API를 last-changed-statuses에서 조건형 주문 조회 API로 전환
-  - 24시간 단위 일별 스캔으로 7일 lookback 구현
-  - DB에 shippingMemo 컬럼 추가 + 동기화 시 저장
-  - OrderTable을 orderId 기준 그룹으로 재구성 (펼침/접힘)
-  - 그룹 헤더에 수령인/배송지/택배유형/내일배송 뱃지/상품수/상태 표시
-  - 배송메모를 그룹 헤더 아래에 표시
-  - 택배유형 한글화 (domestic → 국내택배, nextDay → 내일배송)
-  - 내일배송 가능/불가 뱃지를 테이블에서 바로 확인 가능
-  - BookingTask에 shippingMemo 전달
-  - groupOrdersByOrderId 유틸 + vitest 테스트 5건
-- **기술적 결정:**
-  - 조건형 API(GET /v1/pay-order/seller/product-orders) 사용 → 현재 상태 기반 조회로 안정적
-  - from~to 24시간 제약 → 일별 순회로 해결, 윈도우 경계 중복은 Set으로 제거
-  - auth.ts readRawEnv() → dotenv-expand가 bcrypt salt의 $ 기호를 치환하는 문제 우회
-- **이슈/교훈:**
-  - last-changed-statuses는 상태 변경 이벤트만 추적 → 현재 PAYED 상태인 주문을 못 찾는 근본 문제 발견
-  - 조건형 API에 timezone offset(+09:00)을 쓰면 400 에러 → UTC ISO format(.toISOString()) 사용
+  - 배송요청사항 필드가 `#delivery_msg`가 아닌 `#special_contents` → 폼 HTML 덤프로 확인
+  - 면책동의 체크박스 `label.click()` + `cb.checked = true` 동시 사용 시 더블 토글 → label만 사용
+  - `groupOrdersByOrderId`에서 `first.shippingMemo` 사용 시 null 반환 → `find()` 패턴으로 수정
+  - 예약 완료 후 탭 전환 시 stale 캐시로 false trigger → 2-phase ref 패턴으로 해결
+  - 조건형 API에 timezone offset 사용 시 400 에러 → UTC ISO format 사용
 
 ### Phase 5: 설정 페이지
 - **상태:** 예정
