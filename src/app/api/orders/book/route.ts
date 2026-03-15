@@ -32,6 +32,7 @@ export async function POST(request: NextRequest) {
       productName: order.productName,
       totalPrice: order.totalPrice ?? 0,
       quantity: order.quantity,
+      shippingMemo: order.shippingMemo ?? null,
     }));
 
     enqueueBookings(tasks);

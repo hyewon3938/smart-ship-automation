@@ -18,4 +18,5 @@ export interface BookingTask {
   productName: string;
   totalPrice: number;
   quantity: number;
+  shippingMemo: string | null;
 }
