@@ -108,6 +108,28 @@
   - Phase 2에서 sync.ts가 주소를 합쳐서 저장하고 있었음 → 사후 분리 불가능하여 스키마 변경 + 동기화 로직 수정
   - 전화번호 하이픈 제거 처리 (네이버 API 형식 → GS택배 입력 형식)
 
+### UI 개선: 주문 그룹핑 + 배송메모 + 한글화
+- **완료일:** 2026-03-15
+- **PR:** (현재 브랜치에 포함)
+- **주요 변경:**
+  - 네이버 API를 last-changed-statuses에서 조건형 주문 조회 API로 전환
+  - 24시간 단위 일별 스캔으로 7일 lookback 구현
+  - DB에 shippingMemo 컬럼 추가 + 동기화 시 저장
+  - OrderTable을 orderId 기준 그룹으로 재구성 (펼침/접힘)
+  - 그룹 헤더에 수령인/배송지/택배유형/내일배송 뱃지/상품수/상태 표시
+  - 배송메모를 그룹 헤더 아래에 표시
+  - 택배유형 한글화 (domestic → 국내택배, nextDay → 내일배송)
+  - 내일배송 가능/불가 뱃지를 테이블에서 바로 확인 가능
+  - BookingTask에 shippingMemo 전달
+  - groupOrdersByOrderId 유틸 + vitest 테스트 5건
+- **기술적 결정:**
+  - 조건형 API(GET /v1/pay-order/seller/product-orders) 사용 → 현재 상태 기반 조회로 안정적
+  - from~to 24시간 제약 → 일별 순회로 해결, 윈도우 경계 중복은 Set으로 제거
+  - auth.ts readRawEnv() → dotenv-expand가 bcrypt salt의 $ 기호를 치환하는 문제 우회
+- **이슈/교훈:**
+  - last-changed-statuses는 상태 변경 이벤트만 추적 → 현재 PAYED 상태인 주문을 못 찾는 근본 문제 발견
+  - 조건형 API에 timezone offset(+09:00)을 쓰면 400 에러 → UTC ISO format(.toISOString()) 사용
+
 ### Phase 5: 설정 페이지
 - **상태:** 예정
 - **내용:** 크리덴셜 관리, 보내는 사람 정보 설정
