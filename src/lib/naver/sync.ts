@@ -31,6 +31,7 @@ function upsertOrder(order: ProductOrderDetail, existing: Order | undefined): vo
         recipientAddress: baseAddress,
         recipientAddressDetail: detailedAddress,
         recipientZipCode: order.shippingAddress.zipCode,
+        shippingMemo: order.shippingMemo,
         isNextDayEligible: isNextDay,
         updatedAt: new Date().toISOString(),
       })
@@ -51,6 +52,7 @@ function upsertOrder(order: ProductOrderDetail, existing: Order | undefined): vo
         recipientAddress: baseAddress,
         recipientAddressDetail: detailedAddress,
         recipientZipCode: order.shippingAddress.zipCode,
+        shippingMemo: order.shippingMemo,
         status: "pending",
         isNextDayEligible: isNextDay,
         selectedDeliveryType: isNextDay ? "nextDay" : "domestic",
