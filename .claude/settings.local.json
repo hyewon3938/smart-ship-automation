@@ -15,7 +15,10 @@
       "Bash(npx shadcn@latest add sonner --yes)",
       "Bash(npx drizzle-kit generate)",
       "Bash(npx drizzle-kit migrate)",
-      "Bash(npx tsc --noEmit)"
+      "Bash(npx tsc --noEmit)",
+      "Bash(git push -u origin chore/1-project-setup)",
+      "Bash(git push origin main)",
+      "Bash(git branch main f79e86b)"
     ]
   }
 }
