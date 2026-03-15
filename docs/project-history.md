@@ -39,8 +39,24 @@
   - 기존 파일(.claude/, CLAUDE.md) 충돌로 임시 디렉토리에서 초기화 후 rsync로 복사
 
 ### Phase 2: 네이버 커머스 API 연동
-- **상태:** 예정
-- **내용:** OAuth 인증, 발송대기 주문 조회, 로컬 DB 동기화
+- **완료일:** 2026-03-15
+- **PR:** #8
+- **주요 변경:**
+  - OAuth 2.0 인증 (bcrypt 서명 + 모듈 레벨 토큰 캐싱)
+  - 발송대기 주문 2단계 조회: last-changed-statuses(PAYED) → product-orders/query
+  - 429 Rate Limit 지수 백오프 (1s/2s/4s, 최대 3회)
+  - 내일배송 가능 지역 자동 판별 (서울 전체, 인천/경기 일부)
+  - DB 동기화: productOrderId 기준 upsert, 처리 중 주문 보호
+  - API 라우트: GET /api/orders, POST /api/orders/sync
+  - 공유 타입: Order, SyncResult
+- **기술적 결정:**
+  - zod v4로 외부 API 응답 strict 파싱 → 필드명 변경 즉시 감지
+  - 300개 배치 처리 → 네이버 API 제한 대응
+  - vitest.config.ts → .mts 변환 → vitest v4 ESM 호환성 확보
+- **이슈/교훈:**
+  - 네이버 커머스 API 공식 문서(apicenter.commerce.naver.com) 직접 접근 불가 → 커뮤니티 소스 기반 zod 스키마 작성
+  - **첫 실제 API 호출 시 응답을 로깅하여 zod 스키마 필드명 보정 필요**
+  - vitest v4는 ESM 전용 → config 파일을 .mts로 변환해야 동작
 
 ### Phase 3: 대시보드 UI
 - **상태:** 예정
