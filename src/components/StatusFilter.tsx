@@ -11,6 +11,7 @@ interface StatusCount {
   booked: number;
   failed: number;
   skipped: number;
+  dispatched: number;
 }
 
 interface StatusFilterProps {
@@ -25,7 +26,8 @@ const TABS: {
   countKey: keyof StatusCount;
 }[] = [
   { key: "pending", label: "대기", countKey: "pending" },
-  { key: "booked", label: "완료", countKey: "booked" },
+  { key: "booked", label: "예약완료", countKey: "booked" },
+  { key: "dispatched", label: "발송완료", countKey: "dispatched" },
   { key: "failed", label: "실패", countKey: "failed" },
   { key: undefined, label: "전체", countKey: "all" },
 ];

@@ -6,7 +6,10 @@ import type { orders } from "@/lib/db/schema";
 export type Order = InferSelectModel<typeof orders>;
 
 /** 주문 상태 */
-export type OrderStatus = "pending" | "booking" | "booked" | "failed" | "skipped";
+export type OrderStatus = "pending" | "booking" | "booked" | "failed" | "skipped" | "dispatched";
+
+/** 발송처리 상태 */
+export type DispatchStatus = "pending_dispatch" | "dispatched" | "dispatch_failed";
 
 /** 택배 유형 */
 export type DeliveryType = "domestic" | "nextDay";
@@ -74,9 +77,17 @@ export interface BookingDefaults {
   defaultDeliveryType: DeliveryType;
 }
 
+export interface DispatchSettings {
+  autoMode: boolean;
+  pollIntervalMin: number;
+  /** 내일배송 택배사 코드 (기본값 DELIVERBOX — 실제 확인 필요) */
+  nextDayDeliveryCode: string;
+}
+
 export interface AllSettings {
   naver: NaverSettings;
   gs: GsSettings;
   sender: SenderSettings;
   booking: BookingDefaults;
+  dispatch: DispatchSettings;
 }

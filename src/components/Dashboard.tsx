@@ -5,6 +5,7 @@ import Link from "next/link";
 import { toast } from "sonner";
 
 import { BookingConfirmDialog } from "@/components/BookingConfirmDialog";
+import { DispatchPanel } from "@/components/DispatchPanel";
 import { OrderTable } from "@/components/OrderTable";
 import { OrderTableSkeleton } from "@/components/OrderTableSkeleton";
 import { StatusFilter } from "@/components/StatusFilter";
@@ -224,6 +225,9 @@ export function Dashboard() {
           </Button>
         </div>
       )}
+
+      {/* 발송처리 패널 (booked 주문이 있을 때만 표시) */}
+      <DispatchPanel orders={allOrders} />
 
       {/* 예약 확인 다이얼로그 */}
       <BookingConfirmDialog

@@ -1,10 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 
+import { startDispatchPolling } from "@/lib/dispatch-worker";
 import { getOrders } from "@/lib/orders";
 import { getSetting } from "@/lib/settings";
 
+// 서버 시작 후 첫 요청 시 1회만 폴링 시작
+let dispatchPollingStarted = false;
+
 export async function GET(request: NextRequest) {
   try {
+    if (!dispatchPollingStarted) {
+      dispatchPollingStarted = true;
+      startDispatchPolling();
+    }
+
     const { searchParams } = request.nextUrl;
     const status = searchParams.get("status") ?? undefined;
     const orderList = getOrders(status);

@@ -16,7 +16,7 @@ export const orders = sqliteTable("orders", {
   recipientZipCode: text("recipient_zip_code").notNull(),
   shippingMemo: text("shipping_memo"),
   status: text("status", {
-    enum: ["pending", "booking", "booked", "failed", "skipped"],
+    enum: ["pending", "booking", "booked", "failed", "skipped", "dispatched"],
   })
     .notNull()
     .default("pending"),
@@ -30,6 +30,11 @@ export const orders = sqliteTable("orders", {
     .default("domestic"),
   bookingResult: text("booking_result"),
   bookingReservationNo: text("booking_reservation_no"),
+  trackingNumber: text("tracking_number"),
+  dispatchStatus: text("dispatch_status", {
+    enum: ["pending_dispatch", "dispatched", "dispatch_failed"],
+  }),
+  dispatchedAt: text("dispatched_at"),
   createdAt: text("created_at")
     .notNull()
     .$defaultFn(() => new Date().toISOString()),

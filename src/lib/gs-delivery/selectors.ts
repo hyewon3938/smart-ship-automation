@@ -10,6 +10,21 @@ export const GS_URLS = {
   LOGIN: "https://www.cvsnet.co.kr/member/login/index.do",
   DOMESTIC: "https://www.cvsnet.co.kr/reservation-inquiry/domestic/index.do",
   NEXT_DAY: "https://www.cvsnet.co.kr/reservation-inquiry/nextDay/nextIndex.do",
+  RESERVATION_LIST: "https://www.cvsnet.co.kr/my-page/reservation/list.do",
+} as const;
+
+// ── 예약 목록 조회 ──
+// 실제 사이트 확인 완료 (2026-03-16)
+// 컬럼 순서: 체크박스(1) | No(2) | 예약번호(3) | 구분(4) | 예약명(5) | 예약일(6) | 물품건수(7) | 운송장출력(8) | 예약상태(9) | 수정(10)
+export const RESERVATION_LIST_SELECTORS = {
+  /** 첫 번째 테이블의 tbody 행 */
+  ROWS: "table:first-of-type tbody tr",
+  /** 행 내 예약번호 셀 (3번째) */
+  RESERVATION_NO_CELL: "td:nth-child(3)",
+  /** 행 내 운송장번호 셀 (8번째 — "운송장출력" 컬럼) */
+  TRACKING_NO_CELL: "td:nth-child(8)",
+  /** 데이터 없을 때 표시되는 요소 */
+  NO_DATA: ".no_data, td.no_data, tr.no_data",
 } as const;
 
 // ── 로그인 ──

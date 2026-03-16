@@ -52,6 +52,7 @@ export function getGroupStatus(orders: Order[]): OrderStatus {
   if (statuses.has("failed")) return "failed";
   if (statuses.has("pending")) return "pending";
   if (statuses.has("booked")) return "booked";
+  if (statuses.has("dispatched")) return "dispatched";
   return "skipped";
 }
 
@@ -66,9 +67,18 @@ export function countGroupsByStatus(orders: Order[]): {
   booked: number;
   failed: number;
   skipped: number;
+  dispatched: number;
 } {
   const groups = groupOrdersByOrderId(orders);
-  const counts = { all: groups.length, pending: 0, booking: 0, booked: 0, failed: 0, skipped: 0 };
+  const counts = {
+    all: groups.length,
+    pending: 0,
+    booking: 0,
+    booked: 0,
+    failed: 0,
+    skipped: 0,
+    dispatched: 0,
+  };
 
   for (const group of groups) {
     const status = getGroupStatus(group.orders);
