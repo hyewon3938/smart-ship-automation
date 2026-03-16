@@ -3,7 +3,7 @@ import { desc, eq, inArray } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { bookingLogs, orders } from "@/lib/db/schema";
 
-import type { BookingLogEntry, DeliveryType, OrderStatus } from "@/types";
+import type { BookingLogEntry, DeliveryType, DispatchStatus, OrderStatus } from "@/types";
 
 /** 전체 주문 목록 조회 (최신순) */
 export function getOrders(status?: string) {
@@ -155,6 +155,112 @@ export function updateGroupDeliveryType(
     })
     .where(eq(orders.orderId, orderId))
     .run();
+}
+
+/** booked 상태 주문 그룹 조회 (발송처리 워커용) */
+export function getBookedOrderGroups(): Array<{
+  orderId: string;
+  firstDbId: number;
+  bookingReservationNo: string | null;
+  trackingNumber: string | null;
+  dispatchStatus: DispatchStatus | null;
+  deliveryType: string;
+  productOrderIds: string[];
+}> {
+  const bookedOrders = db
+    .select()
+    .from(orders)
+    .where(eq(orders.status, "booked" as OrderStatus))
+    .all();
+
+  const groups = new Map<string, typeof bookedOrders>();
+  for (const order of bookedOrders) {
+    const existing = groups.get(order.orderId) ?? [];
+    existing.push(order);
+    groups.set(order.orderId, existing);
+  }
+
+  return Array.from(groups.entries()).map(([orderId, items]) => ({
+    orderId,
+    firstDbId: items[0].id,
+    bookingReservationNo: items[0].bookingReservationNo,
+    trackingNumber: items[0].trackingNumber,
+    dispatchStatus: items[0].dispatchStatus as DispatchStatus | null,
+    deliveryType: items[0].selectedDeliveryType,
+    productOrderIds: items.map((o) => o.productOrderId),
+  }));
+}
+
+/** 운송장번호 업데이트 + pending_dispatch 마킹 (orderId 기준 일괄) */
+export function updateTrackingNumbers(
+  orderId: string,
+  trackingNumber: string
+): void {
+  db.update(orders)
+    .set({
+      trackingNumber,
+      dispatchStatus: "pending_dispatch" as DispatchStatus,
+      updatedAt: new Date().toISOString(),
+    })
+    .where(eq(orders.orderId, orderId))
+    .run();
+}
+
+/** 발송처리 상태 업데이트 (orderId 기준 일괄) */
+export function updateDispatchStatus(
+  orderId: string,
+  status: "dispatched" | "dispatch_failed"
+): void {
+  const now = new Date().toISOString();
+  db.update(orders)
+    .set({
+      dispatchStatus: status as DispatchStatus,
+      status: status === "dispatched" ? ("dispatched" as OrderStatus) : undefined,
+      dispatchedAt: status === "dispatched" ? now : null,
+      updatedAt: now,
+    })
+    .where(eq(orders.orderId, orderId))
+    .run();
+}
+
+/**
+ * orderId 기준으로 해당 주문 그룹 상태를 일괄 업데이트.
+ * 서버에서 로컬 예약 결과를 수신할 때 사용 (DB의 row id가 서버와 다를 수 있음).
+ */
+export function updateOrdersByOrderId(
+  orderId: string,
+  status: OrderStatus,
+  bookingResult?: string,
+  bookingReservationNo?: string
+): void {
+  db.update(orders)
+    .set({
+      status,
+      bookingResult: bookingResult ?? null,
+      bookingReservationNo: bookingReservationNo ?? null,
+      updatedAt: new Date().toISOString(),
+    })
+    .where(eq(orders.orderId, orderId))
+    .run();
+}
+
+/**
+ * orderId 기준으로 첫 번째 row를 찾아 예약 로그 기록.
+ * 서버에서 로컬 예약 결과를 수신할 때 사용.
+ */
+export function addBookingLogByOrderId(
+  orderId: string,
+  action: string,
+  detail?: string
+): void {
+  const first = db
+    .select({ id: orders.id })
+    .from(orders)
+    .where(eq(orders.orderId, orderId))
+    .get();
+  if (first) {
+    addBookingLog(first.id, action, detail);
+  }
 }
 
 /**

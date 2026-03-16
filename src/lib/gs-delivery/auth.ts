@@ -1,3 +1,6 @@
+import fs from "fs";
+import path from "path";
+
 import {
   GS_URLS,
   LOGIN_SELECTORS,
@@ -7,6 +10,7 @@ import {
 import { saveCookies } from "./browser";
 
 import { getConfigValue } from "@/lib/settings";
+import { syncCookiesToServer } from "@/lib/sync-to-server";
 
 import type { Page } from "playwright";
 
@@ -114,6 +118,9 @@ export async function login(page: Page): Promise<void> {
 
     // 로그인 쿠키 저장 → 다음 실행 시 재사용
     await saveCookies();
+
+    // 서버에도 쿠키 동기화 (서버 headless 스크래핑용, 비동기)
+    void syncCookiesAfterLogin();
   } catch {
     // 로그인 실패 원인 확인
     const bodyText = await page.evaluate(() =>
@@ -124,6 +131,19 @@ export async function login(page: Page): Promise<void> {
         "브라우저 창에서 캡챠를 확인하세요.\n" +
         `페이지 내용: ${bodyText}`
     );
+  }
+}
+
+/** 로그인 성공 후 저장된 쿠키를 서버에 동기화 */
+async function syncCookiesAfterLogin(): Promise<void> {
+  const cookiesPath = path.join(process.cwd(), "data", "cookies.json");
+  try {
+    if (!fs.existsSync(cookiesPath)) return;
+    const raw = fs.readFileSync(cookiesPath, "utf-8");
+    const cookies = JSON.parse(raw) as Array<Record<string, unknown>>;
+    await syncCookiesToServer(cookies);
+  } catch {
+    console.warn("[auth] 쿠키 서버 동기화 실패 (무시)");
   }
 }
 

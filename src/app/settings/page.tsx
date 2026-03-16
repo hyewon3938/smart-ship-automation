@@ -3,6 +3,7 @@
 import Link from "next/link";
 
 import { BookingSettingsTab } from "@/components/settings/BookingSettingsTab";
+import { DispatchSettingsTab } from "@/components/settings/DispatchSettingsTab";
 import { GsSettingsTab } from "@/components/settings/GsSettingsTab";
 import { NaverSettingsTab } from "@/components/settings/NaverSettingsTab";
 import { Card, CardContent } from "@/components/ui/card";
@@ -35,10 +36,11 @@ export default function SettingsPage() {
         ) : (
           settings && (
             <Tabs defaultValue="naver">
-              <TabsList className="grid w-full grid-cols-3">
+              <TabsList className="grid w-full grid-cols-4">
                 <TabsTrigger value="naver">네이버 API</TabsTrigger>
                 <TabsTrigger value="gs">GS택배</TabsTrigger>
                 <TabsTrigger value="booking">택배 기본값</TabsTrigger>
+                <TabsTrigger value="dispatch">발송처리</TabsTrigger>
               </TabsList>
               <Card className="mt-4">
                 <CardContent className="pt-6">
@@ -50,6 +52,9 @@ export default function SettingsPage() {
                   </TabsContent>
                   <TabsContent value="booking">
                     <BookingSettingsTab initial={settings.booking} />
+                  </TabsContent>
+                  <TabsContent value="dispatch">
+                    <DispatchSettingsTab initial={settings.dispatch} />
                   </TabsContent>
                 </CardContent>
               </Card>

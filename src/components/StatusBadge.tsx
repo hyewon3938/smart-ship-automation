@@ -30,6 +30,11 @@ const STATUS_CONFIG: Record<
     className:
       "border border-muted-foreground/30 text-muted-foreground bg-transparent hover:bg-transparent",
   },
+  dispatched: {
+    label: "발송완료",
+    className:
+      "bg-emerald-100 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-900 dark:text-emerald-300",
+  },
 };
 
 interface StatusBadgeProps {
@@ -37,6 +42,6 @@ interface StatusBadgeProps {
 }
 
 export function StatusBadge({ status }: StatusBadgeProps) {
-  const config = STATUS_CONFIG[status];
+  const config = STATUS_CONFIG[status] ?? STATUS_CONFIG.pending;
   return <Badge className={config.className}>{config.label}</Badge>;
 }

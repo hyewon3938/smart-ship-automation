@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="80" fill="#171717"/>
+  <!-- 택배 상자 -->
+  <rect x="116" y="200" width="280" height="220" rx="12" fill="#ffffff"/>
+  <rect x="116" y="200" width="280" height="44" rx="12" fill="#e5e5e5"/>
+  <!-- 상자 테이프 -->
+  <rect x="232" y="200" width="48" height="220" fill="#d4d4d4"/>
+  <rect x="116" y="222" width="280" height="8" fill="#d4d4d4"/>
+  <!-- 빠른 배송 화살표 -->
+  <path d="M156 310 L220 310 L200 280 L260 310 L200 340 L220 310" fill="none" stroke="#171717" stroke-width="14" stroke-linejoin="round" stroke-linecap="round"/>
+</svg>

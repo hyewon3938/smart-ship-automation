@@ -7,6 +7,7 @@ import {
   recoverStuckBookings,
   updateOrderStatusBatch,
 } from "@/lib/orders";
+import { syncBookingResult } from "@/lib/sync-to-server";
 
 import type { BookingTask } from "./types";
 
@@ -131,6 +132,12 @@ async function processSingleOrder(task: BookingTask): Promise<void> {
         console.log(
           `[worker] ✅ 예약 완료 — 주문: ${task.naverOrderId}, 예약번호: ${result.reservationNo ?? "(없음)"}`
         );
+        void syncBookingResult({
+          orderId: task.naverOrderId,
+          status: "booked",
+          bookingResult: JSON.stringify({ reservationNo: result.reservationNo }),
+          bookingReservationNo: result.reservationNo,
+        });
         return;
       }
 
@@ -156,6 +163,11 @@ async function processSingleOrder(task: BookingTask): Promise<void> {
   if (lastResult?.screenshotPath) {
     console.error(`[worker] 📸 스크린샷: ${lastResult.screenshotPath}`);
   }
+  void syncBookingResult({
+    orderId: task.naverOrderId,
+    status: "failed",
+    error: lastResult?.error ?? "알 수 없는 오류",
+  });
 }
 
 /**
