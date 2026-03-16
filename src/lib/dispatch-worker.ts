@@ -108,7 +108,7 @@ export async function checkAndDispatch(): Promise<CheckAndDispatchResult> {
     // 5. 운송장번호 있고 아직 발송처리 안 된 그룹 처리
     const freshGroups = getBookedOrderGroups();
     const pendingDispatch = freshGroups.filter(
-      (g) => g.trackingNumber && !g.dispatchStatus
+      (g) => g.trackingNumber && (!g.dispatchStatus || g.dispatchStatus === "pending_dispatch")
     );
 
     for (const group of pendingDispatch) {
