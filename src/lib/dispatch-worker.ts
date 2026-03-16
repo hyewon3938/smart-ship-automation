@@ -72,32 +72,30 @@ export async function checkAndDispatch(): Promise<CheckAndDispatchResult> {
       .map((g) => g.bookingReservationNo)
       .filter((n): n is string => !!n);
 
-    if (reservationNos.length === 0) {
-      return result;
-    }
+    // 3. 예약번호가 있는 주문만 운송장번호 스크래핑
+    if (reservationNos.length > 0) {
+      const trackingResults = await scrapeTrackingNumbers(reservationNos);
 
-    const trackingResults = await scrapeTrackingNumbers(reservationNos);
+      for (const tr of trackingResults) {
+        if (!tr.trackingNo) continue;
 
-    // 3. 운송장번호 DB 저장
-    for (const tr of trackingResults) {
-      if (!tr.trackingNo) continue;
+        const group = bookedGroups.find((g) => g.bookingReservationNo === tr.reservationNo);
+        if (!group) continue;
 
-      const group = bookedGroups.find((g) => g.bookingReservationNo === tr.reservationNo);
-      if (!group) continue;
+        // 이미 운송장번호가 있으면 스킵
+        if (group.trackingNumber) continue;
 
-      // 이미 운송장번호가 있으면 스킵
-      if (group.trackingNumber) continue;
-
-      updateTrackingNumbers(group.orderId, tr.trackingNo);
-      addBookingLog(
-        group.firstDbId,
-        "tracking",
-        `운송장번호 감지: ${tr.trackingNo}`
-      );
-      result.tracked++;
-      console.log(
-        `[dispatch-worker] 운송장 감지 — 주문: ${group.orderId}, 운송장: ${tr.trackingNo}`
-      );
+        updateTrackingNumbers(group.orderId, tr.trackingNo);
+        addBookingLog(
+          group.firstDbId,
+          "tracking",
+          `운송장번호 감지: ${tr.trackingNo}`
+        );
+        result.tracked++;
+        console.log(
+          `[dispatch-worker] 운송장 감지 — 주문: ${group.orderId}, 운송장: ${tr.trackingNo}`
+        );
+      }
     }
 
     // 4. 자동 모드가 아니면 여기서 종료 (수동 승인 대기)
