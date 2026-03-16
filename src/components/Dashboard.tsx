@@ -173,6 +173,16 @@ export function Dashboard() {
           </p>
         </div>
         <div className="flex items-center gap-3">
+          <button
+            onClick={() => setIsLoginModalOpen(true)}
+            className={`text-sm hover:text-foreground ${
+              isCookieExpired
+                ? "text-orange-600 font-medium"
+                : "text-muted-foreground"
+            }`}
+          >
+            GS로그인{isCookieExpired ? " (만료)" : ""}
+          </button>
           <Link
             href="/settings"
             className="text-sm text-muted-foreground hover:text-foreground"
