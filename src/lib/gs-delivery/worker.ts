@@ -1,5 +1,5 @@
 import { closeBrowser, newPage } from "./browser";
-import { ensureLoggedIn } from "./auth";
+import { ensureLoggedIn, LoginError } from "./auth";
 import { bookDomestic, bookNextDay } from "./automation";
 
 import {
@@ -142,6 +142,21 @@ async function processSingleOrder(task: BookingTask): Promise<void> {
       }
 
       console.warn(`[worker] ⚠️ 시도 ${attempt + 1} 실패: ${result.error}`);
+    } catch (err) {
+      // LoginError는 재시도해도 해결 불가 — 즉시 최종 실패 처리
+      if (err instanceof LoginError) {
+        const msg = err.message;
+        console.error(`[worker] ❌ 로그인 실패 — 재시도 불가: ${msg}`);
+        updateOrderStatusBatch(task.orderDbIds, "failed", msg);
+        addBookingLog(logId, "error", `로그인 실패: ${msg}`);
+        void syncBookingResult({
+          orderId: task.naverOrderId,
+          status: "failed",
+          error: msg,
+        });
+        return;
+      }
+      throw err; // 다른 에러는 기존 로직으로 전파
     } finally {
       await page.close().catch(() => {});
     }
