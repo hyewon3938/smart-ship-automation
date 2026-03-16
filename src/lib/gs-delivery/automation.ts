@@ -127,6 +127,23 @@ async function fillAndSubmitForm(
       }
     }
 
+    // 비로그인 상태 감지 — 세션 만료 시 폼 대기 전에 빠르게 실패
+    currentStep = "1-2. 로그인 상태 확인";
+    const notLoggedIn = await page.evaluate(() => {
+      const bodyText = document.body.innerText;
+      return (
+        bodyText.includes("비로그인") ||
+        bodyText.includes("로그인이 필요") ||
+        bodyText.includes("로그인 후 이용")
+      );
+    }).catch(() => false);
+    if (notLoggedIn) {
+      throw new Error(
+        "GS택배 세션이 만료되었습니다. 로컬에서 다시 로그인하여 쿠키를 갱신해주세요."
+      );
+    }
+    console.log(`[booking] ${currentStep} ✓`);
+
     // 폼이 로드될 때까지 대기
     await page
       .locator(S.FORM)

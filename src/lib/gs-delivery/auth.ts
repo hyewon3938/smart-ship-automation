@@ -17,14 +17,37 @@ import type { Page } from "playwright";
 /**
  * 현재 로그인 상태를 확인한다.
  * 국내택배 페이지에 접근하여 로그인 여부를 판별.
- * - 비로그인: "현재 비로그인 상태입니다" 텍스트 표시
- * - 로그인됨: "마이페이지" 링크 표시
+ * - 비로그인: "현재 비로그인 상태입니다" 텍스트 또는 로그인 폼 표시
+ * - 로그인됨: "마이페이지" 링크 표시 + 비로그인 텍스트 없음
+ *
+ * domcontentloaded 직후에는 서버 렌더링 HTML에 마이페이지 링크가 남아있을 수 있으므로
+ * JS 실행 완료를 기다린 뒤 비로그인 상태도 함께 확인한다.
  */
 export async function isLoggedIn(page: Page): Promise<boolean> {
   try {
     const url = page.url();
     if (!url.includes("cvsnet.co.kr")) {
-      await page.goto(GS_URLS.DOMESTIC, { waitUntil: "domcontentloaded" });
+      await page.goto(GS_URLS.DOMESTIC, {
+        waitUntil: "domcontentloaded",
+        timeout: 15_000,
+      });
+      // JS가 세션 상태를 확인할 시간을 준다 (Cloudflare 등 비동기 체크 대비)
+      await page.waitForTimeout(2000);
+    }
+
+    // 비로그인 상태를 먼저 확인 (확실한 음성 지표 — JS 실행 후 나타남)
+    const notLoggedIn = await page.evaluate(() => {
+      const bodyText = document.body.innerText;
+      return (
+        bodyText.includes("비로그인") ||
+        bodyText.includes("로그인이 필요") ||
+        bodyText.includes("로그인 후 이용")
+      );
+    }).catch(() => false);
+
+    if (notLoggedIn) {
+      console.log("[auth] 비로그인 상태 감지 — 세션 만료됨");
+      return false;
     }
 
     // "마이페이지" 링크 또는 "로그아웃" 링크가 보이면 로그인 상태
@@ -126,10 +149,14 @@ export async function login(page: Page): Promise<void> {
     const bodyText = await page.evaluate(() =>
       document.body.innerText.substring(0, 300)
     );
+    const isServer = process.env.DEPLOY_MODE === "server";
     throw new Error(
-      "로그인 실패: 60초 내에 로그인이 완료되지 않았습니다. " +
-        "브라우저 창에서 캡챠를 확인하세요.\n" +
-        `페이지 내용: ${bodyText}`
+      isServer
+        ? "GS택배 로그인 실패 (서버 headless 모드): Turnstile 캡챠를 통과할 수 없습니다. " +
+          "로컬에서 로그인하여 쿠키를 서버에 동기화해주세요."
+        : "로그인 실패: 60초 내에 로그인이 완료되지 않았습니다. " +
+          "브라우저 창에서 캡챠를 확인하세요.\n" +
+          `페이지 내용: ${bodyText}`
     );
   }
 }
