@@ -67,7 +67,7 @@ function LogRow({ log }: { log: BookingLogEntry }) {
       <td className="py-2 pr-4">
         <ActionBadge action={log.action} />
       </td>
-      <td className="py-2 pr-4 text-sm">{log.detail ? stripAnsi(log.detail) : "-"}</td>
+      <td className="py-2 pr-4 text-sm max-w-sm break-words">{log.detail ? stripAnsi(log.detail) : "-"}</td>
       <td className="py-2 text-sm">
         {log.screenshotPath ? (
           <a
@@ -89,7 +89,7 @@ export function BookingLogDialog({ orderId, naverOrderId, open, onOpenChange }: 
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-w-2xl max-h-[80vh] flex flex-col">
         <DialogHeader>
           <DialogTitle>예약 로그 — 주문 {naverOrderId}</DialogTitle>
         </DialogHeader>
@@ -110,7 +110,7 @@ export function BookingLogDialog({ orderId, naverOrderId, open, onOpenChange }: 
           data.logs.length === 0 ? (
             <p className="text-sm text-muted-foreground">기록된 로그가 없습니다.</p>
           ) : (
-            <div className="overflow-x-auto">
+            <div className="overflow-auto flex-1">
               <table className="w-full text-left">
                 <thead>
                   <tr className="border-b text-xs text-muted-foreground">
