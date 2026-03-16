@@ -48,3 +48,35 @@ export interface BookingLogEntry {
   screenshotPath: string | null;
   createdAt: string;
 }
+
+/** 설정 카테고리별 타입 */
+export interface NaverSettings {
+  clientId: string;
+  clientSecret: string;
+}
+
+export interface GsSettings {
+  username: string;
+  password: string;
+}
+
+export interface SenderSettings {
+  name: string;
+  phone: string;
+  zipcode: string;
+  address: string;
+  addressDetail: string;
+}
+
+export interface BookingDefaults {
+  defaultProductType: string;
+  defaultPrice: string;
+  defaultDeliveryType: DeliveryType;
+}
+
+export interface AllSettings {
+  naver: NaverSettings;
+  gs: GsSettings;
+  sender: SenderSettings;
+  booking: BookingDefaults;
+}

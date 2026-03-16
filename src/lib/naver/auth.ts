@@ -3,6 +3,8 @@ import { resolve } from "path";
 
 import bcryptjs from "bcryptjs";
 
+import { getConfigValue, getSetting } from "@/lib/settings";
+
 import { tokenResponseSchema } from "./types";
 
 const TOKEN_URL = "https://api.commerce.naver.com/external/v1/oauth2/token";
@@ -71,10 +73,12 @@ export async function getAccessToken(): Promise<string> {
     return cachedToken.accessToken;
   }
 
-  const clientId = process.env.NAVER_CLIENT_ID;
-  // dotenv-expand가 bcrypt salt의 '$'를 변수 치환하므로 파일에서 직접 읽음
+  const clientId = getConfigValue("naver.clientId", "NAVER_CLIENT_ID");
+  // clientSecret은 bcrypt salt($) 포함이므로 DB값 우선, 없으면 raw env 읽기
   const clientSecret =
-    readRawEnv("NAVER_CLIENT_SECRET") ?? process.env.NAVER_CLIENT_SECRET;
+    getSetting("naver.clientSecret") ??
+    readRawEnv("NAVER_CLIENT_SECRET") ??
+    process.env.NAVER_CLIENT_SECRET;
   if (!clientId || !clientSecret) {
     throw new Error(
       "NAVER_CLIENT_ID 또는 NAVER_CLIENT_SECRET이 설정되지 않았습니다."

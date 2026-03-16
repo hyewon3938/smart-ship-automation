@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { toast } from "sonner";
 
 import { BookingConfirmDialog } from "@/components/BookingConfirmDialog";
@@ -157,11 +158,19 @@ export function Dashboard() {
             네이버 스마트스토어 주문 → GS택배 자동 예약
           </p>
         </div>
-        <SyncButton
-          lastSyncTime={lastSyncTime}
-          isPending={syncMutation.isPending}
-          onSync={handleSync}
-        />
+        <div className="flex items-center gap-3">
+          <Link
+            href="/settings"
+            className="text-sm text-muted-foreground hover:text-foreground"
+          >
+            설정
+          </Link>
+          <SyncButton
+            lastSyncTime={lastSyncTime}
+            isPending={syncMutation.isPending}
+            onSync={handleSync}
+          />
+        </div>
       </div>
 
       {/* 상태 필터 */}

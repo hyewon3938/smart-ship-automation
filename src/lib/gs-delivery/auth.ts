@@ -6,6 +6,8 @@ import {
 } from "./selectors";
 import { saveCookies } from "./browser";
 
+import { getConfigValue } from "@/lib/settings";
+
 import type { Page } from "playwright";
 
 /**
@@ -54,12 +56,12 @@ export async function isLoggedIn(page: Page): Promise<boolean> {
  * @throws 60초 내 로그인 미완료 시 에러
  */
 export async function login(page: Page): Promise<void> {
-  const username = process.env.GS_USERNAME;
-  const password = process.env.GS_PASSWORD;
+  const username = getConfigValue("gs.username", "GS_USERNAME");
+  const password = getConfigValue("gs.password", "GS_PASSWORD");
 
   if (!username || !password) {
     throw new Error(
-      "GS_USERNAME 또는 GS_PASSWORD가 설정되지 않았습니다. .env.local을 확인하세요."
+      "GS_USERNAME 또는 GS_PASSWORD가 설정되지 않았습니다. 설정 페이지 또는 .env.local을 확인하세요."
     );
   }
 
