@@ -3,6 +3,8 @@
 import { useMemo, useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 
+import { BookingLogDialog } from "@/components/BookingLogDialog";
+
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -80,6 +82,8 @@ export function OrderTable({
   onGroupStatusChange,
 }: OrderTableProps) {
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+  const [logDialogOrderId, setLogDialogOrderId] = useState<number | null>(null);
+  const [logDialogNaverOrderId, setLogDialogNaverOrderId] = useState("");
 
   const groups = useMemo(() => groupOrdersByOrderId(orders), [orders]);
 
@@ -125,6 +129,11 @@ export function OrderTable({
     onSelectedChange(next);
   }
 
+  function handleViewLogs(firstDbId: number, naverOrderId: string) {
+    setLogDialogOrderId(firstDbId);
+    setLogDialogNaverOrderId(naverOrderId);
+  }
+
   if (orders.length === 0) {
     return (
       <div className="border rounded-lg p-12 text-center text-muted-foreground text-sm">
@@ -134,6 +143,7 @@ export function OrderTable({
   }
 
   return (
+    <>
     <div className="border rounded-lg overflow-hidden">
       <Table>
         <TableHeader>
@@ -185,12 +195,20 @@ export function OrderTable({
                 }
                 onGroupDeliveryTypeChange={onGroupDeliveryTypeChange}
                 onGroupStatusChange={onGroupStatusChange}
+                onViewLogs={handleViewLogs}
               />
             );
           })}
         </TableBody>
       </Table>
     </div>
+    <BookingLogDialog
+      orderId={logDialogOrderId}
+      naverOrderId={logDialogNaverOrderId}
+      open={logDialogOrderId !== null}
+      onOpenChange={(open) => { if (!open) setLogDialogOrderId(null); }}
+    />
+    </>
   );
 }
 
@@ -206,6 +224,7 @@ interface GroupRowsProps {
   onGroupCheck: (checked: boolean) => void;
   onGroupDeliveryTypeChange: (orderId: string, type: DeliveryType) => void;
   onGroupStatusChange: (orderId: string, status: OrderStatus) => void;
+  onViewLogs: (firstDbId: number, naverOrderId: string) => void;
 }
 
 function GroupRows({
@@ -219,6 +238,7 @@ function GroupRows({
   onGroupCheck,
   onGroupDeliveryTypeChange,
   onGroupStatusChange,
+  onViewLogs,
 }: GroupRowsProps) {
   const groupStatus = getGroupStatus(group.orders);
   const groupDeliveryType = getGroupDeliveryType(group.orders);
@@ -256,6 +276,15 @@ function GroupRows({
             <p className="text-xs text-muted-foreground truncate">
               {group.recipientPhone}
             </p>
+            <button
+              className="text-xs text-blue-500 underline hover:text-blue-700 truncate block max-w-full"
+              onClick={(e) => {
+                e.stopPropagation();
+                onViewLogs(group.orders[0].id, group.orderId);
+              }}
+            >
+              {group.orderId}
+            </button>
           </div>
         </TableCell>
         <TableCell>
