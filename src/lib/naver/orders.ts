@@ -134,3 +134,33 @@ export async function fetchPendingOrders(): Promise<ProductOrderDetail[]> {
 
   return results;
 }
+
+/**
+ * 배송중(집화 완료) 상품 주문 ID 조회
+ *
+ * 조건형 API로 DELIVERING 상태 주문을 조회하여,
+ * 우리 DB의 dispatched 주문과 매칭할 수 있는 productOrderId Set을 반환한다.
+ * productOrderStatus = DELIVERING: 택배사가 수거하여 배송 중임을 의미.
+ */
+export async function fetchDeliveringOrderIds(): Promise<Set<string>> {
+  const token = await getAccessToken();
+  const now = new Date();
+  const deliveringIds = new Set<string>();
+
+  for (let daysBack = 0; daysBack < LOOKBACK_DAYS; daysBack++) {
+    const from = new Date(now.getTime() - (daysBack + 1) * DAY_MS);
+    const to = new Date(now.getTime() - daysBack * DAY_MS);
+
+    const orders = await fetchOrdersForWindow(token, from, to, "DELIVERING");
+    for (const order of orders) {
+      deliveringIds.add(order.productOrderId);
+    }
+
+    // Rate limit 방지
+    if (daysBack < LOOKBACK_DAYS - 1) {
+      await new Promise((r) => setTimeout(r, 800));
+    }
+  }
+
+  return deliveringIds;
+}
