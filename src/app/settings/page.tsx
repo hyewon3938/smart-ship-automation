@@ -5,7 +5,6 @@ import Link from "next/link";
 import { BookingSettingsTab } from "@/components/settings/BookingSettingsTab";
 import { GsSettingsTab } from "@/components/settings/GsSettingsTab";
 import { NaverSettingsTab } from "@/components/settings/NaverSettingsTab";
-import { SenderSettingsTab } from "@/components/settings/SenderSettingsTab";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -36,10 +35,9 @@ export default function SettingsPage() {
         ) : (
           settings && (
             <Tabs defaultValue="naver">
-              <TabsList className="grid w-full grid-cols-4">
+              <TabsList className="grid w-full grid-cols-3">
                 <TabsTrigger value="naver">네이버 API</TabsTrigger>
                 <TabsTrigger value="gs">GS택배</TabsTrigger>
-                <TabsTrigger value="sender">보내는 사람</TabsTrigger>
                 <TabsTrigger value="booking">택배 기본값</TabsTrigger>
               </TabsList>
               <Card className="mt-4">
@@ -49,9 +47,6 @@ export default function SettingsPage() {
                   </TabsContent>
                   <TabsContent value="gs">
                     <GsSettingsTab initial={settings.gs} />
-                  </TabsContent>
-                  <TabsContent value="sender">
-                    <SenderSettingsTab initial={settings.sender} />
                   </TabsContent>
                   <TabsContent value="booking">
                     <BookingSettingsTab initial={settings.booking} />

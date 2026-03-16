@@ -59,7 +59,9 @@ export function BookingSettingsTab({ initial }: Props) {
           }
         >
           <SelectTrigger id="booking-product-type">
-            <SelectValue placeholder="물품 유형 선택" />
+            <SelectValue placeholder="물품 유형 선택">
+              {PRODUCT_TYPES.find((t) => t.value === form.defaultProductType)?.label}
+            </SelectValue>
           </SelectTrigger>
           <SelectContent>
             {PRODUCT_TYPES.map((type) => (
@@ -95,7 +97,9 @@ export function BookingSettingsTab({ initial }: Props) {
           }
         >
           <SelectTrigger id="booking-delivery-type">
-            <SelectValue placeholder="택배 유형 선택" />
+            <SelectValue placeholder="택배 유형 선택">
+              {form.defaultDeliveryType === "domestic" ? "국내택배" : "내일배송"}
+            </SelectValue>
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="domestic">국내택배</SelectItem>
