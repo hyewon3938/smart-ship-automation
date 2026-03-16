@@ -177,6 +177,21 @@
   - GS택배 쿠키 만료 시 자동 갱신 불가 (캡챠 때문에 서버에서 로그인 불가) → 다음 로컬 예약 시 자동 재동기화됨
   - Next.js Metadata API에서 `viewport`는 별도 `export const viewport: Viewport`로 분리 필요 (metadata 내 viewport 옵션은 deprecated)
 
+### Phase 7: 에러 핸들링 및 예약 로그 뷰어 (#6)
+- **완료일:** 2026-03-16
+- **PR:** #14
+- **주요 변경:**
+  - 예약 실패 시 자동 재시도 (최대 2회, 지수 백오프 2s/4s)
+  - 예약 로그 뷰어 다이얼로그 (주문번호 클릭 → 로그 + 스크린샷 확인)
+  - 로그 조회 API (`GET /api/orders/:id/logs`)
+  - 스크린샷 서빙 API (`GET /api/screenshots/:filename`, 경로 조작 방지)
+  - 토스트 알림은 Phase 3~5에서 이미 구현 완료
+- **기술적 결정:**
+  - 로그 뷰어 별도 페이지 대신 다이얼로그로 구현 (orderId 클릭 트리거)
+  - 재시도 실패 시에도 스크린샷 경로 마지막 result에서 보존
+- **이슈/교훈:**
+  - 없음
+
 ---
 
 ## 기록 형식 템플릿
