@@ -127,8 +127,25 @@
   - 조건형 API에 timezone offset 사용 시 400 에러 → UTC ISO format 사용
 
 ### Phase 5: 설정 페이지
-- **상태:** 예정
-- **내용:** 크리덴셜 관리, 보내는 사람 정보 설정
+- **완료일:** 2026-03-16
+- **PR:** #13
+- **주요 변경:**
+  - 설정 페이지 UI (4탭: 네이버 API / GS택배 / 보내는 사람 / 택배 기본값)
+  - 설정 CRUD API (`GET/PUT /api/settings`)
+  - 네이버 API 연결 테스트 (`POST /api/settings/test-naver`)
+  - GS택배 로그인 테스트 (`POST /api/settings/test-gs`)
+  - DB 설정 우선, env 폴백 전략 (`getConfigValue(dbKey, envKey)`)
+  - 비밀값 마스킹 처리 (`****{last4}`) + PUT 시 마스킹 값 유지
+  - 기존 `.env.local` 사용자 하위 호환 유지
+  - `settings.ts` 단위 테스트 11개 추가
+  - 대시보드 헤더에 설정 페이지 링크 추가
+  - shadcn/ui input/label/tabs/card 추가
+- **기술적 결정:**
+  - DB 평문 저장 (로컬 SQLite 1인 사용 → 암호화 불필요)
+  - `getAllSettingsRaw()` 내부용 별도 제공 (test-gs 등 실제 크리덴셜 필요한 곳에 활용)
+  - clientSecret bcrypt salt 처리: DB 값 있으면 사용, 없으면 readRawEnv 폴백 유지
+- **이슈/교훈:**
+  - vi.mock 파셜 모킹은 같은 모듈 내 함수 호출에 미적용 → DB 체인 모킹으로 해결
 
 ### Phase 6: 마무리
 - **상태:** 예정
