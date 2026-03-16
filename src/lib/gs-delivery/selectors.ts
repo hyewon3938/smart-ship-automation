@@ -10,6 +10,20 @@ export const GS_URLS = {
   LOGIN: "https://www.cvsnet.co.kr/member/login/index.do",
   DOMESTIC: "https://www.cvsnet.co.kr/reservation-inquiry/domestic/index.do",
   NEXT_DAY: "https://www.cvsnet.co.kr/reservation-inquiry/nextDay/nextIndex.do",
+  RESERVATION_LIST: "https://www.cvsnet.co.kr/my-page/reservation/list.do",
+} as const;
+
+// ── 예약 목록 조회 ──
+// ⚠️ 실제 사이트 DevTools로 확인하여 교체할 것
+export const RESERVATION_LIST_SELECTORS = {
+  /** 예약 목록 테이블 행 */
+  ROWS: ".list_table tbody tr, table.tbl_list tbody tr",
+  /** 행 내 예약번호 셀 (1번째) */
+  RESERVATION_NO_CELL: "td:nth-child(1)",
+  /** 행 내 운송장번호 셀 (2번째) — 없으면 빈 문자열 */
+  TRACKING_NO_CELL: "td:nth-child(2)",
+  /** 데이터 없을 때 표시되는 요소 */
+  NO_DATA: ".no_data, td.no_data, tr.no_data",
 } as const;
 
 // ── 로그인 ──
