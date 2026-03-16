@@ -147,9 +147,35 @@
 - **이슈/교훈:**
   - vi.mock 파셜 모킹은 같은 모듈 내 함수 호출에 미적용 → DB 체인 모킹으로 해결
 
-### Phase 6: 마무리
-- **상태:** 예정
-- **내용:** 에러 핸들링, 토스트, 로그 뷰어
+### Phase 6: 서버 배포 + 자동 발송처리 + PWA
+- **완료일:** 2026-03-16
+- **이슈:** #17
+- **PR:** #18 (예정)
+- **주요 변경:**
+  - Oracle Cloud VM 배포 (PM2 + Caddy + 자동 HTTPS Let's Encrypt)
+  - `DEPLOY_MODE=server` 환경변수로 headless Playwright 전환 (Linux VM 옵션 포함)
+  - 로컬↔서버 동기화 API (`POST /api/internal/cookies`, `POST /api/internal/booking-result`)
+  - `INTERNAL_API_KEY` 헤더 인증으로 내부 API 보호
+  - 예약 완료/실패 시 서버 DB 자동 동기화 (worker.ts)
+  - GS택배 로그인 후 쿠키 서버 자동 동기화 (auth.ts)
+  - `sync-to-server.ts`: 환경변수 미설정 시 no-op → 기존 로컬 전용 사용자 영향 없음
+  - PWA 대시보드 (manifest.json, sw.js, 아이콘, viewport 메타태그)
+  - 모바일 홈화면 설치 가능, 오프라인 폴백
+- **아키텍처 변경:**
+  - 서버: Next.js 프로덕션 + SQLite + 자동 발송처리 폴링 + PWA 대시보드
+  - 로컬: GS택배 Playwright headed 예약 + 서버로 결과/쿠키 자동 동기화
+  - 서버에서 headless Playwright로 운송장번호 스크래핑 → 네이버 자동 발송처리
+- **기술적 결정:**
+  - Caddy 선택 → 설정 한 줄로 자동 HTTPS, nginx보다 설정 간단
+  - 동기화 실패가 로컬 동작 방해하지 않도록 `void` 비동기 패턴 사용
+  - `ServerURL` 미설정 시 기존 로컬 전용 동작 100% 유지 → 하위 호환
+  - PM2 `max_memory_restart` 500MB → SQLite + Playwright 메모리 누수 방지
+  - 서비스 워커: Network-first (대시보드 항상 최신) + API 요청은 캐시 제외
+  - SVG 아이콘 + PNG 폴백 (maskable 지원)
+- **이슈/교훈:**
+  - 서버에서 headless Playwright 실행 시 `--no-sandbox`, `--disable-setuid-sandbox`, `--disable-dev-shm-usage` 필수 (root 또는 VM 환경)
+  - GS택배 쿠키 만료 시 자동 갱신 불가 (캡챠 때문에 서버에서 로그인 불가) → 다음 로컬 예약 시 자동 재동기화됨
+  - Next.js Metadata API에서 `viewport`는 별도 `export const viewport: Viewport`로 분리 필요 (metadata 내 viewport 옵션은 deprecated)
 
 ---
 
