@@ -3,7 +3,7 @@ import { desc, eq, inArray } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { bookingLogs, orders } from "@/lib/db/schema";
 
-import type { BookingLogEntry, DeliveryType, DispatchStatus, OrderStatus } from "@/types";
+import type { BookingLogEntry, DeliveryTrackingStatus, DeliveryType, DispatchStatus, OrderStatus } from "@/types";
 
 /** 전체 주문 목록 조회 (최신순) */
 export function getOrders(status?: string) {
@@ -261,6 +261,40 @@ export function addBookingLogByOrderId(
   if (first) {
     addBookingLog(first.id, action, detail);
   }
+}
+
+/** dispatched 상태이면서 배송상태 미확인인 주문의 productOrderId 목록 */
+export function getUncheckedDispatchedOrders(): Array<{
+  orderId: string;
+  productOrderId: string;
+}> {
+  const dispatched = db
+    .select({
+      orderId: orders.orderId,
+      productOrderId: orders.productOrderId,
+      deliveryStatus: orders.deliveryStatus,
+    })
+    .from(orders)
+    .where(eq(orders.status, "dispatched" as OrderStatus))
+    .all();
+
+  // 이미 delivering/delivered 확인된 건은 제외
+  return dispatched.filter((o) => !o.deliveryStatus);
+}
+
+/** 배송상태 업데이트 (productOrderId 기준) */
+export function updateDeliveryStatus(
+  productOrderId: string,
+  deliveryStatus: DeliveryTrackingStatus
+): void {
+  db.update(orders)
+    .set({
+      deliveryStatus,
+      deliveryStatusCheckedAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    })
+    .where(eq(orders.productOrderId, productOrderId))
+    .run();
 }
 
 /**

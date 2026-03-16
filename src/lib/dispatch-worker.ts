@@ -1,8 +1,11 @@
 import { scrapeTrackingNumbers } from "@/lib/gs-delivery/scrape-tracking";
 import { dispatchOrders, DELIVERY_COMPANY_CODES } from "@/lib/naver/dispatch";
+import { fetchDeliveringOrderIds } from "@/lib/naver/orders";
 import {
   addBookingLog,
   getBookedOrderGroups,
+  getUncheckedDispatchedOrders,
+  updateDeliveryStatus,
   updateDispatchStatus,
   updateTrackingNumbers,
 } from "@/lib/orders";
@@ -143,6 +146,25 @@ export async function checkAndDispatch(): Promise<CheckAndDispatchResult> {
         result.errors.push(`${group.orderId}: ${msg}`);
         console.error(`[dispatch-worker] ❌ 예외 — ${group.orderId}: ${msg}`);
       }
+    }
+
+    // 6. 발송완료 주문 집화 여부 확인 (배송상태 미확인 건만)
+    try {
+      const unchecked = getUncheckedDispatchedOrders();
+      if (unchecked.length > 0) {
+        const deliveringIds = await fetchDeliveringOrderIds();
+        for (const order of unchecked) {
+          if (deliveringIds.has(order.productOrderId)) {
+            updateDeliveryStatus(order.productOrderId, "delivering");
+            console.log(
+              `[dispatch-worker] 📦 집화 확인 — 주문: ${order.orderId}`
+            );
+          }
+        }
+      }
+    } catch (err) {
+      // 배송상태 확인 실패는 무시 (다음 폴링에서 재시도)
+      console.error("[dispatch-worker] 배송상태 확인 실패:", err);
     }
   } catch (err) {
     const msg = err instanceof Error ? err.message : "알 수 없는 오류";
