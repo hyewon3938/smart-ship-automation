@@ -14,6 +14,14 @@ import { syncCookiesToServer } from "@/lib/sync-to-server";
 
 import type { Page } from "playwright";
 
+/** 로그인 실패 시 사용하는 에러 — 재시도해도 해결 불가능한 경우 */
+export class LoginError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "LoginError";
+  }
+}
+
 /**
  * 현재 로그인 상태를 확인한다.
  * 국내택배 페이지에 접근하여 로그인 여부를 판별.
@@ -137,20 +145,13 @@ export async function login(page: Page): Promise<void> {
         timeout: LOGIN_TIMEOUT_MS,
       }),
     ]);
-    console.log("[auth] 로그인 성공");
-
-    // 로그인 쿠키 저장 → 다음 실행 시 재사용
-    await saveCookies();
-
-    // 서버에도 쿠키 동기화 (서버 headless 스크래핑용, 비동기)
-    void syncCookiesAfterLogin();
   } catch {
     // 로그인 실패 원인 확인
     const bodyText = await page.evaluate(() =>
       document.body.innerText.substring(0, 300)
     );
     const isServer = process.env.DEPLOY_MODE === "server";
-    throw new Error(
+    throw new LoginError(
       isServer
         ? "GS택배 로그인 실패 (서버 headless 모드): Turnstile 캡챠를 통과할 수 없습니다. " +
           "로컬에서 로그인하여 쿠키를 서버에 동기화해주세요."
@@ -159,6 +160,20 @@ export async function login(page: Page): Promise<void> {
           `페이지 내용: ${bodyText}`
     );
   }
+
+  // 로그인 성공 여부를 실제 페이지에서 재검증 (거짓 양성 방지)
+  const verified = await isLoggedIn(page);
+  if (!verified) {
+    console.error("[auth] 로그인 후 검증 실패 — 세션이 유효하지 않음");
+    throw new LoginError(
+      "GS택배 로그인에 실패했습니다. Turnstile 캡챠가 통과되지 않았을 수 있습니다. " +
+      "로컬에서 예약을 실행하여 쿠키를 서버에 동기화해주세요."
+    );
+  }
+
+  console.log("[auth] 로그인 성공 (검증 완료)");
+  await saveCookies();
+  void syncCookiesAfterLogin();
 }
 
 /** 로그인 성공 후 저장된 쿠키를 서버에 동기화 */
