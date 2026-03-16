@@ -285,11 +285,13 @@ export function getUncheckedDispatchedOrders(): Array<{
 /** 배송상태 업데이트 (productOrderId 기준) */
 export function updateDeliveryStatus(
   productOrderId: string,
-  deliveryStatus: DeliveryTrackingStatus
+  deliveryStatus: DeliveryTrackingStatus,
+  pickupDate?: string | null
 ): void {
   db.update(orders)
     .set({
       deliveryStatus,
+      pickupDate: pickupDate ?? null,
       deliveryStatusCheckedAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     })

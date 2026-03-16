@@ -38,6 +38,7 @@ export const orders = sqliteTable("orders", {
   deliveryStatus: text("delivery_status", {
     enum: ["delivering", "delivered"],
   }),
+  pickupDate: text("pickup_date"),
   deliveryStatusCheckedAt: text("delivery_status_checked_at"),
   createdAt: text("created_at")
     .notNull()
