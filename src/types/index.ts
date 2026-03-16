@@ -11,6 +11,9 @@ export type OrderStatus = "pending" | "booking" | "booked" | "failed" | "skipped
 /** 발송처리 상태 */
 export type DispatchStatus = "pending_dispatch" | "dispatched" | "dispatch_failed";
 
+/** 배송 추적 상태 (네이버 API 기반) */
+export type DeliveryTrackingStatus = "delivering" | "delivered";
+
 /** 택배 유형 */
 export type DeliveryType = "domestic" | "nextDay";
 

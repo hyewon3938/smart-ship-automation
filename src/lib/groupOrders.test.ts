@@ -28,6 +28,8 @@ function makeOrder(overrides: Partial<Order> = {}): Order {
     trackingNumber: null,
     dispatchStatus: null,
     dispatchedAt: null,
+    deliveryStatus: null,
+    deliveryStatusCheckedAt: null,
     createdAt: "2026-03-14T09:00:00.000Z",
     updatedAt: "2026-03-14T09:00:00.000Z",
     ...overrides,

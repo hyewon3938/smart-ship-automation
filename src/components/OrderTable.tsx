@@ -24,7 +24,7 @@ import {
 import { StatusBadge } from "@/components/StatusBadge";
 import { getGroupStatus, groupOrdersByOrderId } from "@/lib/groupOrders";
 
-import type { DeliveryType, Order, OrderGroup, OrderStatus } from "@/types";
+import type { DeliveryType, DeliveryTrackingStatus, Order, OrderGroup, OrderStatus } from "@/types";
 
 interface OrderTableProps {
   orders: Order[];
@@ -34,27 +34,16 @@ interface OrderTableProps {
   onGroupStatusChange: (orderId: string, status: OrderStatus) => void;
 }
 
-const MAX_ADDRESS_LENGTH = 40;
-
 const DELIVERY_TYPE_LABELS: Record<string, string> = {
   domestic: "국내택배",
   nextDay: "내일배송",
 };
 
-const STATUS_LABELS: Record<string, string> = {
-  pending: "대기",
-  booking: "예약중",
-  booked: "완료",
-  failed: "실패",
-  skipped: "건너뜀",
-};
+/** 배지로만 표시 (상태 변경 불가 최종 상태) */
+const NON_EDITABLE_BADGE_STATUSES = new Set(["booking", "dispatched", "skipped"]);
 
 /** 체크박스 선택 가능한 상태 (pending + failed = 재시도 가능) */
 const SELECTABLE_STATUSES = new Set(["pending", "failed"]);
-
-function truncate(text: string, maxLength: number): string {
-  return text.length > maxLength ? text.slice(0, maxLength) + "…" : text;
-}
 
 function formatPrice(price: number | null | undefined): string {
   if (price == null) return "-";
@@ -227,6 +216,13 @@ interface GroupRowsProps {
   onViewLogs: (firstDbId: number, naverOrderId: string) => void;
 }
 
+/** 그룹 내 배송 추적 상태 (네이버 API 기반, 가장 진행된 상태 반환) */
+function getGroupDeliveryStatus(orders: Order[]): DeliveryTrackingStatus | null {
+  if (orders.some((o) => o.deliveryStatus === "delivered")) return "delivered";
+  if (orders.some((o) => o.deliveryStatus === "delivering")) return "delivering";
+  return null;
+}
+
 function GroupRows({
   group,
   isExpanded,
@@ -243,6 +239,7 @@ function GroupRows({
   const groupStatus = getGroupStatus(group.orders);
   const groupDeliveryType = getGroupDeliveryType(group.orders);
   const totalPrice = getGroupTotalPrice(group.orders);
+  const groupDeliveryStatus = getGroupDeliveryStatus(group.orders);
   const isEditable = SELECTABLE_STATUSES.has(groupStatus); // pending or failed
 
   return (
@@ -280,9 +277,7 @@ function GroupRows({
         </TableCell>
         <TableCell>
           <div className="space-y-0.5">
-            <p className="text-sm">
-              {truncate(fullAddress, MAX_ADDRESS_LENGTH)}
-            </p>
+            <p className="text-sm break-words">{fullAddress}</p>
             <p className="text-xs text-muted-foreground">
               {group.recipientZipCode}
             </p>
@@ -346,8 +341,15 @@ function GroupRows({
         </TableCell>
         <TableCell onClick={(e) => e.stopPropagation()}>
           <div className="flex items-center gap-1">
-          {groupStatus === "booking" ? (
-            <StatusBadge status={groupStatus} />
+          {NON_EDITABLE_BADGE_STATUSES.has(groupStatus) ? (
+            <div className="flex flex-col gap-0.5">
+              <StatusBadge status={groupStatus as OrderStatus} />
+              {groupStatus === "dispatched" && groupDeliveryStatus === "delivering" && (
+                <Badge className="bg-blue-100 text-blue-700 hover:bg-blue-100 dark:bg-blue-900 dark:text-blue-300 text-[10px] px-1.5 py-0 w-fit">
+                  배송중
+                </Badge>
+              )}
+            </div>
           ) : (
             <Select
               value={groupStatus}
@@ -357,7 +359,7 @@ function GroupRows({
             >
               <SelectTrigger className="w-20 h-7 text-xs">
                 <span data-slot="select-value" className="flex flex-1 text-left">
-                  {STATUS_LABELS[groupStatus]}
+                  {groupStatus === "pending" ? "대기" : groupStatus === "booked" ? "완료" : "실패"}
                 </span>
               </SelectTrigger>
               <SelectContent>
