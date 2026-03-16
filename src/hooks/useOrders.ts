@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import type { DeliveryType, OrdersResponse, SyncResult } from "@/types";
+import type { BookingLogEntry, DeliveryType, OrdersResponse, SyncResult } from "@/types";
 
 /** 주문 목록 조회 + booking 상태 시 3초 폴링 */
 export function useOrders(status?: string) {
@@ -93,6 +93,19 @@ export function useUpdateGroupDeliveryType() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["orders"] });
     },
+  });
+}
+
+/** 주문의 예약 로그 조회 */
+export function useBookingLogs(orderId: number | null) {
+  return useQuery<{ logs: BookingLogEntry[] }>({
+    queryKey: ["bookingLogs", orderId],
+    queryFn: async () => {
+      const res = await fetch(`/api/orders/${orderId}/logs`);
+      if (!res.ok) throw new Error("로그 조회 실패");
+      return res.json();
+    },
+    enabled: orderId !== null,
   });
 }
 

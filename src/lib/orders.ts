@@ -3,7 +3,7 @@ import { desc, eq, inArray } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { bookingLogs, orders } from "@/lib/db/schema";
 
-import type { DeliveryType, DispatchStatus, OrderStatus } from "@/types";
+import type { BookingLogEntry, DeliveryType, DispatchStatus, OrderStatus } from "@/types";
 
 /** 전체 주문 목록 조회 (최신순) */
 export function getOrders(status?: string) {
@@ -74,6 +74,16 @@ export function updateOrderStatusBatch(
     })
     .where(inArray(orders.id, ids))
     .run();
+}
+
+/** 주문의 예약 로그 조회 (최신순) */
+export function getBookingLogs(orderId: number): BookingLogEntry[] {
+  return db
+    .select()
+    .from(bookingLogs)
+    .where(eq(bookingLogs.orderId, orderId))
+    .orderBy(desc(bookingLogs.createdAt))
+    .all() as BookingLogEntry[];
 }
 
 /** 예약 로그 기록 */
