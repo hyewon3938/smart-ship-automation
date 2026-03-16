@@ -7,6 +7,7 @@ import {
   recoverStuckBookings,
   updateOrderStatusBatch,
 } from "@/lib/orders";
+import { syncBookingResult } from "@/lib/sync-to-server";
 
 import type { BookingTask } from "./types";
 
@@ -118,6 +119,14 @@ async function processSingleOrder(task: BookingTask): Promise<void> {
       console.log(
         `[worker] ✅ 예약 완료 — 주문: ${task.naverOrderId}, 예약번호: ${result.reservationNo ?? "(없음)"}`
       );
+
+      // 서버에 예약 결과 동기화 (비동기, 실패해도 로컬 동작에 영향 없음)
+      void syncBookingResult({
+        orderId: task.naverOrderId,
+        status: "booked",
+        bookingResult: JSON.stringify({ reservationNo: result.reservationNo }),
+        bookingReservationNo: result.reservationNo,
+      });
     } else {
       updateOrderStatusBatch(
         task.orderDbIds,
@@ -136,6 +145,13 @@ async function processSingleOrder(task: BookingTask): Promise<void> {
       if (result.screenshotPath) {
         console.error(`[worker] 📸 스크린샷: ${result.screenshotPath}`);
       }
+
+      // 서버에 실패 결과 동기화
+      void syncBookingResult({
+        orderId: task.naverOrderId,
+        status: "failed",
+        error: result.error ?? "알 수 없는 오류",
+      });
     }
   } finally {
     await page.close().catch(() => {});

@@ -11,16 +11,30 @@ let context: BrowserContext | null = null;
 /** 쿠키 저장 경로 — 로그인 세션 재사용용 */
 const COOKIES_PATH = path.join(process.cwd(), "data", "cookies.json");
 
+/** 서버 모드 여부 — DEPLOY_MODE=server 이면 headless */
+const isServerMode = () => process.env.DEPLOY_MODE === "server";
+
 /**
- * Playwright 브라우저 인스턴스 (싱글턴, headed 모드).
- * 이미 열려 있으면 재사용, 닫혔으면 새로 시작.
+ * Playwright 브라우저 인스턴스 (싱글턴).
+ * - 로컬(기본): headed 모드 (캡챠 수동 처리 가능)
+ * - 서버(DEPLOY_MODE=server): headless 모드 (쿠키 재사용)
  */
 export async function getBrowser(): Promise<Browser> {
   if (browser?.isConnected()) return browser;
 
   browser = await chromium.launch({
-    headless: false,
-    args: ["--disable-blink-features=AutomationControlled"],
+    headless: isServerMode(),
+    args: [
+      "--disable-blink-features=AutomationControlled",
+      // 서버(Linux VM)에서 headless 실행 시 필요
+      ...(isServerMode()
+        ? [
+            "--no-sandbox",
+            "--disable-setuid-sandbox",
+            "--disable-dev-shm-usage",
+          ]
+        : []),
+    ],
   });
 
   browser.on("disconnected", () => {

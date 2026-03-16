@@ -331,8 +331,9 @@ async function fillAndSubmitForm(
 
     // 배송 요청사항 (#special_contents)
     if (task.shippingMemo) {
-      await page.locator(S.DELIVERY_MESSAGE).fill(task.shippingMemo);
-      console.log(`[booking]   배송요청사항: ${task.shippingMemo} ✓`);
+      const sanitizedMemo = sanitizeDeliveryMessage(task.shippingMemo);
+      await page.locator(S.DELIVERY_MESSAGE).fill(sanitizedMemo);
+      console.log(`[booking]   배송요청사항: ${sanitizedMemo} ✓`);
     }
 
     await page.waitForTimeout(ACTION_DELAY_MS);
@@ -474,4 +475,12 @@ async function saveScreenshot(
 
   await page.screenshot({ path: filepath, fullPage: true });
   return filepath;
+}
+
+/**
+ * GS택배 배송 요청사항 필드에 입력 불가한 특수문자 제거.
+ * 허용: 한글, 영문, 숫자, 공백, 쉼표, 마침표, 하이픈, 괄호, 슬래시
+ */
+function sanitizeDeliveryMessage(message: string): string {
+  return message.replace(/[^\uAC00-\uD7A3a-zA-Z0-9 .,\-()\/]/g, "").trim();
 }
