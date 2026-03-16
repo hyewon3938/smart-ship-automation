@@ -148,6 +148,46 @@ export function updateGroupDeliveryType(
 }
 
 /**
+ * orderId 기준으로 해당 주문 그룹 상태를 일괄 업데이트.
+ * 서버에서 로컬 예약 결과를 수신할 때 사용 (DB의 row id가 서버와 다를 수 있음).
+ */
+export function updateOrdersByOrderId(
+  orderId: string,
+  status: OrderStatus,
+  bookingResult?: string,
+  bookingReservationNo?: string
+): void {
+  db.update(orders)
+    .set({
+      status,
+      bookingResult: bookingResult ?? null,
+      bookingReservationNo: bookingReservationNo ?? null,
+      updatedAt: new Date().toISOString(),
+    })
+    .where(eq(orders.orderId, orderId))
+    .run();
+}
+
+/**
+ * orderId 기준으로 첫 번째 row를 찾아 예약 로그 기록.
+ * 서버에서 로컬 예약 결과를 수신할 때 사용.
+ */
+export function addBookingLogByOrderId(
+  orderId: string,
+  action: string,
+  detail?: string
+): void {
+  const first = db
+    .select({ id: orders.id })
+    .from(orders)
+    .where(eq(orders.orderId, orderId))
+    .get();
+  if (first) {
+    addBookingLog(first.id, action, detail);
+  }
+}
+
+/**
  * "booking" 상태로 멈춘 주문을 "pending"으로 복구.
  * 서버 재시작 시 워커 초기화에서 호출.
  */
