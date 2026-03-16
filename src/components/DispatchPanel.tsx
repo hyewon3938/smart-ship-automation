@@ -9,6 +9,15 @@ import { useDispatchOrder, useDispatchSettings, useSyncTracking } from "@/hooks/
 
 import type { Order } from "@/types";
 
+function formatDispatchedAt(iso: string): string {
+  const d = new Date(iso);
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  const hh = String(d.getHours()).padStart(2, "0");
+  const min = String(d.getMinutes()).padStart(2, "0");
+  return `발송 ${mm}-${dd} ${hh}:${min}`;
+}
+
 interface Props {
   orders: Order[];
 }
@@ -35,6 +44,7 @@ export function DispatchPanel({ orders }: Props) {
     trackingNumber: items[0].trackingNumber,
     dispatchStatus: items[0].dispatchStatus,
     deliveryType: items[0].selectedDeliveryType,
+    dispatchedAt: items[0].dispatchedAt,
   }));
 
   if (bookedOrders.length === 0) return null;
@@ -90,9 +100,11 @@ export function DispatchPanel({ orders }: Props) {
             >
               <div className="flex-1 min-w-0">
                 <div className="text-sm font-medium truncate">{group.recipientName}</div>
-                <div className="text-xs text-muted-foreground font-mono truncate">
-                  {group.orderId}
-                </div>
+                {group.dispatchedAt && (
+                  <div className="text-xs text-muted-foreground truncate">
+                    {formatDispatchedAt(group.dispatchedAt)}
+                  </div>
+                )}
               </div>
               <div className="flex items-center gap-2 shrink-0">
                 {group.trackingNumber ? (

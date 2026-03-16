@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { ChevronDown, ChevronRight, ScrollText } from "lucide-react";
 
 import { BookingLogDialog } from "@/components/BookingLogDialog";
 
@@ -276,15 +276,6 @@ function GroupRows({
             <p className="text-xs text-muted-foreground truncate">
               {group.recipientPhone}
             </p>
-            <button
-              className="text-xs text-blue-500 underline hover:text-blue-700 truncate block max-w-full"
-              onClick={(e) => {
-                e.stopPropagation();
-                onViewLogs(group.orders[0].id, group.orderId);
-              }}
-            >
-              {group.orderId}
-            </button>
           </div>
         </TableCell>
         <TableCell>
@@ -354,6 +345,7 @@ function GroupRows({
           </div>
         </TableCell>
         <TableCell onClick={(e) => e.stopPropagation()}>
+          <div className="flex items-center gap-1">
           {groupStatus === "booking" ? (
             <StatusBadge status={groupStatus} />
           ) : (
@@ -381,6 +373,17 @@ function GroupRows({
               </SelectContent>
             </Select>
           )}
+          <button
+            title="예약 로그 보기"
+            className="p-1 text-muted-foreground hover:text-foreground rounded"
+            onClick={(e) => {
+              e.stopPropagation();
+              onViewLogs(group.orders[0].id, group.orderId);
+            }}
+          >
+            <ScrollText className="h-3.5 w-3.5" />
+          </button>
+          </div>
         </TableCell>
       </TableRow>
 
