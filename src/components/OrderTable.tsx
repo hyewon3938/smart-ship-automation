@@ -223,6 +223,21 @@ function getGroupDeliveryStatus(orders: Order[]): DeliveryTrackingStatus | null 
   return null;
 }
 
+/** 그룹 내 가장 최근 집화일시 */
+function getGroupPickupDate(orders: Order[]): string | null {
+  const dates = orders
+    .map((o) => o.pickupDate)
+    .filter((d): d is string => !!d);
+  if (dates.length === 0) return null;
+  return dates.sort().reverse()[0];
+}
+
+/** ISO 날짜를 "M/D HH:mm" 형식으로 */
+function formatPickupDate(iso: string): string {
+  const d = new Date(iso);
+  return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
+
 function GroupRows({
   group,
   isExpanded,
@@ -240,6 +255,7 @@ function GroupRows({
   const groupDeliveryType = getGroupDeliveryType(group.orders);
   const totalPrice = getGroupTotalPrice(group.orders);
   const groupDeliveryStatus = getGroupDeliveryStatus(group.orders);
+  const groupPickupDate = getGroupPickupDate(group.orders);
   const isEditable = SELECTABLE_STATUSES.has(groupStatus); // pending or failed
 
   return (
@@ -348,6 +364,11 @@ function GroupRows({
                 <Badge className="bg-blue-100 text-blue-700 hover:bg-blue-100 dark:bg-blue-900 dark:text-blue-300 text-[10px] px-1.5 py-0 w-fit">
                   배송중
                 </Badge>
+              )}
+              {groupStatus === "dispatched" && groupPickupDate && (
+                <span className="text-[10px] text-muted-foreground">
+                  집화 {formatPickupDate(groupPickupDate)}
+                </span>
               )}
             </div>
           ) : (

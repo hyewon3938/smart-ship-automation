@@ -135,32 +135,70 @@ export async function fetchPendingOrders(): Promise<ProductOrderDetail[]> {
   return results;
 }
 
+export interface DeliveryInfo {
+  status: "delivering" | "delivered";
+  pickupDate: string | null;
+}
+
 /**
- * 배송중(집화 완료) 상품 주문 ID 조회
+ * 상품주문 ID 목록으로 배송 상태 조회 (POST /query)
  *
- * 조건형 API로 DELIVERING 상태 주문을 조회하여,
- * 우리 DB의 dispatched 주문과 매칭할 수 있는 productOrderId Set을 반환한다.
- * productOrderStatus = DELIVERING: 택배사가 수거하여 배송 중임을 의미.
+ * 조건형 API(24시간 윈도우 제약)와 달리 productOrderId로 직접 조회하므로
+ * 시간 범위에 관계없이 정확한 결과를 반환한다.
+ * 응답의 delivery 객체에서 deliveryStatus와 pickupDate를 추출.
  */
-export async function fetchDeliveringOrderIds(): Promise<Set<string>> {
+export async function fetchDeliveryStatuses(
+  productOrderIds: string[]
+): Promise<Map<string, DeliveryInfo>> {
+  if (productOrderIds.length === 0) return new Map();
+
   const token = await getAccessToken();
-  const now = new Date();
-  const deliveringIds = new Set<string>();
+  const result = new Map<string, DeliveryInfo>();
 
-  for (let daysBack = 0; daysBack < LOOKBACK_DAYS; daysBack++) {
-    const from = new Date(now.getTime() - (daysBack + 1) * DAY_MS);
-    const to = new Date(now.getTime() - daysBack * DAY_MS);
-
-    const orders = await fetchOrdersForWindow(token, from, to, "DELIVERING");
-    for (const order of orders) {
-      deliveringIds.add(order.productOrderId);
+  const response = await fetchWithRetry(
+    `${BASE_URL}/pay-order/seller/product-orders/query`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ productOrderIds }),
     }
+  );
 
-    // Rate limit 방지
-    if (daysBack < LOOKBACK_DAYS - 1) {
-      await new Promise((r) => setTimeout(r, 800));
+  const body = await response.text();
+
+  if (!response.ok) {
+    throw new Error(
+      `주문 상세 조회 실패 (${response.status}): ${body.slice(0, 500)}`
+    );
+  }
+
+  const json = JSON.parse(body);
+  const items = json.data;
+
+  if (!Array.isArray(items)) return result;
+
+  for (const item of items) {
+    const productOrderId = item.productOrder?.productOrderId;
+    const delivery = item.delivery;
+
+    if (!productOrderId || !delivery) continue;
+
+    const status = delivery.deliveryStatus;
+    if (status === "DELIVERING") {
+      result.set(productOrderId, {
+        status: "delivering",
+        pickupDate: delivery.pickupDate ?? null,
+      });
+    } else if (status === "DELIVERED") {
+      result.set(productOrderId, {
+        status: "delivered",
+        pickupDate: delivery.pickupDate ?? null,
+      });
     }
   }
 
-  return deliveringIds;
+  return result;
 }
