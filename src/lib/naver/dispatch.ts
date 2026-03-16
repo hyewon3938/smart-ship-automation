@@ -6,8 +6,8 @@ const INITIAL_BACKOFF_MS = 1000;
 
 /** 택배사 코드 매핑 */
 export const DELIVERY_COMPANY_CODES = {
-  domestic: "CJGLS",        // CJ대한통운
-  nextDay: "DELIVERBOX",    // 딜리박스 (설정에서 재정의 가능)
+  domestic: "GSPOSTBOX",    // GS편의점택배 (국내택배)
+  nextDay: "GSPOSTBOX",     // GS편의점택배 (내일배송)
 } as const;
 
 interface DispatchItem {
