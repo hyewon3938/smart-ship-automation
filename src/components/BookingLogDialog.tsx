@@ -53,6 +53,11 @@ function screenshotFilename(path: string): string {
   return path.split("/").pop() ?? path;
 }
 
+function stripAnsi(str: string): string {
+  // eslint-disable-next-line no-control-regex
+  return str.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, "").trim();
+}
+
 function LogRow({ log }: { log: BookingLogEntry }) {
   return (
     <tr className="border-b last:border-0">
@@ -62,7 +67,7 @@ function LogRow({ log }: { log: BookingLogEntry }) {
       <td className="py-2 pr-4">
         <ActionBadge action={log.action} />
       </td>
-      <td className="py-2 pr-4 text-sm">{log.detail ?? "-"}</td>
+      <td className="py-2 pr-4 text-sm">{log.detail ? stripAnsi(log.detail) : "-"}</td>
       <td className="py-2 text-sm">
         {log.screenshotPath ? (
           <a
