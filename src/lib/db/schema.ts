@@ -35,6 +35,10 @@ export const orders = sqliteTable("orders", {
     enum: ["pending_dispatch", "dispatched", "dispatch_failed"],
   }),
   dispatchedAt: text("dispatched_at"),
+  deliveryStatus: text("delivery_status", {
+    enum: ["delivering", "delivered"],
+  }),
+  deliveryStatusCheckedAt: text("delivery_status_checked_at"),
   createdAt: text("created_at")
     .notNull()
     .$defaultFn(() => new Date().toISOString()),
