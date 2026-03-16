@@ -6,12 +6,13 @@ import { toast } from "sonner";
 
 import { BookingConfirmDialog } from "@/components/BookingConfirmDialog";
 import { DispatchPanel } from "@/components/DispatchPanel";
+import { GsLoginModal } from "@/components/GsLoginModal";
 import { OrderTable } from "@/components/OrderTable";
 import { OrderTableSkeleton } from "@/components/OrderTableSkeleton";
 import { StatusFilter } from "@/components/StatusFilter";
 import { SyncButton } from "@/components/SyncButton";
 import { Button } from "@/components/ui/button";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   useBookOrders,
   useOrders,
@@ -30,6 +31,7 @@ export function Dashboard() {
   );
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [isBookingDialogOpen, setIsBookingDialogOpen] = useState(false);
+  const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
 
   // 예약 진행 추적 (2단계):
   // 1단계(waiting): 예약 시작 → "booking" 상태가 나타날 때까지 대기
@@ -42,6 +44,17 @@ export function Dashboard() {
   const updateGroupStatusMutation = useUpdateGroupStatus();
   const updateGroupDeliveryTypeMutation = useUpdateGroupDeliveryType();
   const bookMutation = useBookOrders();
+
+  // GS택배 쿠키 유효성 확인 (만료 시 로그인 배너 표시)
+  const cookieStatusQuery = useQuery({
+    queryKey: ["gs-login-status"],
+    queryFn: async () => {
+      const res = await fetch("/api/gs-login/status");
+      return res.json() as Promise<{ valid: boolean; lastSyncAt: string | null }>;
+    },
+    refetchInterval: 60_000, // 1분마다 재확인
+  });
+  const isCookieExpired = cookieStatusQuery.data?.valid === false;
 
   const orders = data?.orders ?? [];
   const lastSyncTime = data?.lastSyncTime ?? null;
@@ -174,6 +187,23 @@ export function Dashboard() {
         </div>
       </div>
 
+      {/* GS택배 로그인 만료 배너 */}
+      {isCookieExpired && (
+        <div className="flex items-center justify-between gap-3 rounded-lg border border-orange-200 bg-orange-50 px-4 py-3 text-sm">
+          <span className="text-orange-800">
+            GS택배 로그인 세션이 만료되었습니다. 예약 전에 로그인해주세요.
+          </span>
+          <Button
+            variant="outline"
+            size="sm"
+            className="shrink-0 border-orange-300 text-orange-700 hover:bg-orange-100"
+            onClick={() => setIsLoginModalOpen(true)}
+          >
+            GS택배 로그인
+          </Button>
+        </div>
+      )}
+
       {/* 상태 필터 */}
       <StatusFilter
         currentStatus={statusFilter}
@@ -236,6 +266,16 @@ export function Dashboard() {
         selectedOrders={selectedOrders}
         isPending={bookMutation.isPending}
         onConfirm={handleBookConfirm}
+      />
+
+      {/* GS택배 원격 로그인 모달 */}
+      <GsLoginModal
+        open={isLoginModalOpen}
+        onOpenChange={setIsLoginModalOpen}
+        onLoginSuccess={() => {
+          cookieStatusQuery.refetch();
+          toast.success("GS택배 로그인 완료!");
+        }}
       />
     </div>
   );
