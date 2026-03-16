@@ -36,20 +36,43 @@ const SESSION_TTL_MS = 3 * 60 * 1000;
 
 // ── 공개 API ──
 
-/** 쿠키 파일 기반 유효성 간이 확인 (24시간 이내면 유효) */
-export function checkCookieValidity(): {
+/**
+ * GS택배 로그인 유효성 확인.
+ * Playwright로 실제 페이지에 접속하여 로그인 상태를 검증한다.
+ * (쿠키 파일이 있어도 실제 세션이 만료되었을 수 있으므로)
+ */
+export async function checkCookieValidity(): Promise<{
   valid: boolean;
   lastSyncAt: string | null;
-} {
-  try {
-    if (!fs.existsSync(COOKIES_PATH)) {
-      return { valid: false, lastSyncAt: null };
-    }
-    const stat = fs.statSync(COOKIES_PATH);
-    const ageHours = (Date.now() - stat.mtime.getTime()) / (1000 * 60 * 60);
-    return { valid: ageHours < 24, lastSyncAt: stat.mtime.toISOString() };
-  } catch {
+}> {
+  const lastSyncAt = getCookieFileTime();
+
+  // 쿠키 파일 자체가 없으면 바로 invalid
+  if (!fs.existsSync(COOKIES_PATH)) {
     return { valid: false, lastSyncAt: null };
+  }
+
+  try {
+    const page = await newPage();
+    try {
+      const loggedIn = await isLoggedIn(page);
+      return { valid: loggedIn, lastSyncAt };
+    } finally {
+      await page.close().catch(() => {});
+    }
+  } catch {
+    return { valid: false, lastSyncAt };
+  }
+}
+
+/** 쿠키 파일 수정 시간 반환 (없으면 null) */
+function getCookieFileTime(): string | null {
+  try {
+    if (!fs.existsSync(COOKIES_PATH)) return null;
+    const stat = fs.statSync(COOKIES_PATH);
+    return stat.mtime.toISOString();
+  } catch {
+    return null;
   }
 }
 

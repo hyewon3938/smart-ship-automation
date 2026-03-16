@@ -4,6 +4,6 @@ import { checkCookieValidity } from "@/lib/gs-delivery/login-session";
 
 /** GET /api/gs-login/status — GS택배 쿠키 유효성 확인 */
 export async function GET() {
-  const result = checkCookieValidity();
+  const result = await checkCookieValidity();
   return NextResponse.json(result);
 }
