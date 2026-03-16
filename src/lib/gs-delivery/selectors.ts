@@ -14,14 +14,15 @@ export const GS_URLS = {
 } as const;
 
 // ── 예약 목록 조회 ──
-// ⚠️ 실제 사이트 DevTools로 확인하여 교체할 것
+// 실제 사이트 확인 완료 (2026-03-16)
+// 컬럼 순서: 체크박스(1) | No(2) | 예약번호(3) | 구분(4) | 예약명(5) | 예약일(6) | 물품건수(7) | 운송장출력(8) | 예약상태(9) | 수정(10)
 export const RESERVATION_LIST_SELECTORS = {
-  /** 예약 목록 테이블 행 */
-  ROWS: ".list_table tbody tr, table.tbl_list tbody tr",
-  /** 행 내 예약번호 셀 (1번째) */
-  RESERVATION_NO_CELL: "td:nth-child(1)",
-  /** 행 내 운송장번호 셀 (2번째) — 없으면 빈 문자열 */
-  TRACKING_NO_CELL: "td:nth-child(2)",
+  /** 첫 번째 테이블의 tbody 행 */
+  ROWS: "table:first-of-type tbody tr",
+  /** 행 내 예약번호 셀 (3번째) */
+  RESERVATION_NO_CELL: "td:nth-child(3)",
+  /** 행 내 운송장번호 셀 (8번째 — "운송장출력" 컬럼) */
+  TRACKING_NO_CELL: "td:nth-child(8)",
   /** 데이터 없을 때 표시되는 요소 */
   NO_DATA: ".no_data, td.no_data, tr.no_data",
 } as const;
