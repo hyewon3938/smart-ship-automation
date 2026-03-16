@@ -73,8 +73,12 @@ async function processNext(): Promise<void> {
   }
 }
 
+const MAX_RETRIES = 2;
+const RETRY_DELAYS = [2000, 4000]; // ms
+
 /**
- * 단일 주문 그룹 예약 처리 (같은 orderId = 1건 택배)
+ * 단일 주문 그룹 예약 처리 (같은 orderId = 1건 택배).
+ * 실패 시 최대 2회 재시도 (지수 백오프: 2s / 4s).
  */
 async function processSingleOrder(task: BookingTask): Promise<void> {
   const logId = task.orderDbIds[0]; // 로그는 첫 번째 DB row에 기록
@@ -84,61 +88,73 @@ async function processSingleOrder(task: BookingTask): Promise<void> {
     `[worker] 예약 시작 — 주문: ${task.naverOrderId}, 수령인: ${task.recipientName}, 상품 ${task.orderDbIds.length}개`
   );
 
-  const page = await newPage();
+  let lastResult: Awaited<ReturnType<typeof bookDomestic>> | null = null;
 
-  try {
-    // 1. 로그인 보장
-    console.log("[worker] 로그인 확인 중...");
-    await ensureLoggedIn(page);
-    addBookingLog(logId, "login", "로그인 확인 완료");
-    console.log("[worker] 로그인 확인 완료 ✓");
-
-    // 2. 택배 유형에 따라 폼 자동화 실행
-    console.log(
-      `[worker] 폼 자동화 시작 — 유형: ${task.deliveryType === "nextDay" ? "내일배송" : "국내택배"}`
-    );
-    const result =
-      task.deliveryType === "nextDay"
-        ? await bookNextDay(page, task)
-        : await bookDomestic(page, task);
-
-    // 3. DB 상태 반영 — 그룹 내 전체 상품 일괄 변경
-    if (result.success) {
-      updateOrderStatusBatch(
-        task.orderDbIds,
-        "booked",
-        JSON.stringify({ reservationNo: result.reservationNo }),
-        result.reservationNo
-      );
-      addBookingLog(
-        logId,
-        "complete",
-        `예약 완료${result.reservationNo ? `: ${result.reservationNo}` : ""}`
-      );
-      console.log(
-        `[worker] ✅ 예약 완료 — 주문: ${task.naverOrderId}, 예약번호: ${result.reservationNo ?? "(없음)"}`
-      );
-    } else {
-      updateOrderStatusBatch(
-        task.orderDbIds,
-        "failed",
-        result.error ?? "알 수 없는 오류"
-      );
-      addBookingLog(
-        logId,
-        "error",
-        `예약 실패: ${result.error}`,
-        result.screenshotPath
-      );
-      console.error(
-        `[worker] ❌ 예약 실패 — 주문: ${task.naverOrderId}, 에러: ${result.error}`
-      );
-      if (result.screenshotPath) {
-        console.error(`[worker] 📸 스크린샷: ${result.screenshotPath}`);
-      }
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    if (attempt > 0) {
+      const delay = RETRY_DELAYS[attempt - 1];
+      addBookingLog(logId, "retry", `재시도 ${attempt}/${MAX_RETRIES}회 (${delay / 1000}초 후)`);
+      console.log(`[worker] 재시도 ${attempt}/${MAX_RETRIES} — ${delay}ms 후`);
+      await new Promise((r) => setTimeout(r, delay));
     }
-  } finally {
-    await page.close().catch(() => {});
+
+    const page = await newPage();
+    try {
+      await ensureLoggedIn(page);
+      if (attempt === 0) {
+        addBookingLog(logId, "login", "로그인 확인 완료");
+        console.log("[worker] 로그인 확인 완료 ✓");
+      }
+
+      console.log(
+        `[worker] 폼 자동화 시작 — 유형: ${task.deliveryType === "nextDay" ? "내일배송" : "국내택배"}`
+      );
+      const result =
+        task.deliveryType === "nextDay"
+          ? await bookNextDay(page, task)
+          : await bookDomestic(page, task);
+
+      lastResult = result;
+
+      if (result.success) {
+        updateOrderStatusBatch(
+          task.orderDbIds,
+          "booked",
+          JSON.stringify({ reservationNo: result.reservationNo }),
+          result.reservationNo
+        );
+        addBookingLog(
+          logId,
+          "complete",
+          `예약 완료${result.reservationNo ? `: ${result.reservationNo}` : ""}`
+        );
+        console.log(
+          `[worker] ✅ 예약 완료 — 주문: ${task.naverOrderId}, 예약번호: ${result.reservationNo ?? "(없음)"}`
+        );
+        return;
+      }
+
+      console.warn(`[worker] ⚠️ 시도 ${attempt + 1} 실패: ${result.error}`);
+    } finally {
+      await page.close().catch(() => {});
+    }
+  }
+
+  // 모든 재시도 소진 → 최종 실패 처리
+  updateOrderStatusBatch(
+    task.orderDbIds,
+    "failed",
+    lastResult?.error ?? "알 수 없는 오류"
+  );
+  addBookingLog(
+    logId,
+    "error",
+    `예약 실패 (${MAX_RETRIES + 1}회 시도): ${lastResult?.error}`,
+    lastResult?.screenshotPath
+  );
+  console.error(`[worker] ❌ 최종 실패 — 주문: ${task.naverOrderId}`);
+  if (lastResult?.screenshotPath) {
+    console.error(`[worker] 📸 스크린샷: ${lastResult.screenshotPath}`);
   }
 }
 
