@@ -5,6 +5,7 @@ import { settings } from "@/lib/db/schema";
 import type {
   AllSettings,
   BookingDefaults,
+  DispatchSettings,
   GsSettings,
   NaverSettings,
   SenderSettings,
@@ -64,6 +65,11 @@ export function getAllSettings(): AllSettings {
       defaultDeliveryType:
         (getSetting("booking.defaultDeliveryType") as "domestic" | "nextDay") ?? "domestic",
     },
+    dispatch: {
+      autoMode: getSetting("dispatch.autoMode") === "true",
+      pollIntervalMin: Number(getSetting("dispatch.pollIntervalMin") ?? "5"),
+      nextDayDeliveryCode: getSetting("dispatch.nextDayDeliveryCode") ?? "DELIVERBOX",
+    },
   };
 }
 
@@ -90,6 +96,11 @@ export function getAllSettingsRaw(): AllSettings {
       defaultPrice: getSetting("booking.defaultPrice") ?? "1",
       defaultDeliveryType:
         (getSetting("booking.defaultDeliveryType") as "domestic" | "nextDay") ?? "domestic",
+    },
+    dispatch: {
+      autoMode: getSetting("dispatch.autoMode") === "true",
+      pollIntervalMin: Number(getSetting("dispatch.pollIntervalMin") ?? "5"),
+      nextDayDeliveryCode: getSetting("dispatch.nextDayDeliveryCode") ?? "DELIVERBOX",
     },
   };
 }
@@ -121,4 +132,26 @@ export function updateBookingDefaults(data: BookingDefaults): void {
   setSetting("booking.defaultProductType", data.defaultProductType);
   setSetting("booking.defaultPrice", data.defaultPrice);
   setSetting("booking.defaultDeliveryType", data.defaultDeliveryType);
+}
+
+export function updateDispatchSettings(data: DispatchSettings): void {
+  setSetting("dispatch.autoMode", String(data.autoMode));
+  setSetting("dispatch.pollIntervalMin", String(data.pollIntervalMin));
+  setSetting("dispatch.nextDayDeliveryCode", data.nextDayDeliveryCode);
+}
+
+/** 발송 자동모드 여부 조회 */
+export function isDispatchAutoMode(): boolean {
+  return getSetting("dispatch.autoMode") === "true";
+}
+
+/** 폴링 인터벌(ms) 조회 */
+export function getDispatchPollIntervalMs(): number {
+  const min = Number(getSetting("dispatch.pollIntervalMin") ?? "5");
+  return min * 60 * 1000;
+}
+
+/** 내일배송 택배사 코드 조회 */
+export function getNextDayDeliveryCode(): string {
+  return getSetting("dispatch.nextDayDeliveryCode") ?? "DELIVERBOX";
 }
