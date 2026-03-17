@@ -417,42 +417,20 @@ async function fillAndSubmitForm(
     await page.waitForTimeout(ACTION_DELAY_MS);
     console.log(`[booking] ${currentStep} ✓`);
 
-    // ── 4-1. 중간 팝업 처리 (파손면책 동의 등) ──
+    // ── 4-1. 내일배송 전환 팝업 + 기타 팝업 처리 ──
+    // 주소 입력 완료 시점에 내일배송 가능 지역이면 전환 팝업이 뜸
+    await handleNextDayPopup(page);
     await dismissPopups(page);
 
     // ── 5. 예약 제출 ──
     currentStep = "5. 예약 제출";
     console.log(`[booking] ${currentStep}`);
     await page.locator(S.SUBMIT).click();
-
-    // 제출 후 팝업 처리
     await page.waitForTimeout(ACTION_DELAY_MS * 2);
 
-    // "내일배송 전환 안내" 팝업 — "국내택배로 계속" 버튼 클릭
-    // 국내택배를 예약했는데 내일배송 가능 지역이면 이 팝업이 뜸
-    const domesticContinueClicked = await page.evaluate(() => {
-      const keywords = ["국내택배로 계속", "국내택배로 진행", "국내택배 계속"];
-      const candidates = Array.from(
-        document.querySelectorAll("a, button")
-      ) as HTMLElement[];
-      for (const kw of keywords) {
-        for (const el of candidates) {
-          if (
-            el.textContent?.trim().includes(kw) &&
-            el.offsetParent !== null &&
-            el.offsetWidth > 0
-          ) {
-            el.click();
-            return kw;
-          }
-        }
-      }
-      return null;
-    });
-    if (domesticContinueClicked) {
-      console.log(`[booking] 내일배송 전환 팝업 — "${domesticContinueClicked}" 클릭 ✓`);
-      await page.waitForTimeout(ACTION_DELAY_MS * 2);
-    }
+    // "내일배송 전환 안내" 팝업 처리 — Playwright locator로 확실하게 클릭
+    // 스크린샷 확인: "국내택배로 계속" (검정 버튼) | "내일택배 이용" (주황 버튼)
+    await handleNextDayPopup(page);
 
     await dismissPopups(page);
 
@@ -526,6 +504,53 @@ async function fillAndSubmitForm(
       screenshotPath,
     };
   }
+}
+
+/**
+ * "내일배송 전환 안내" 팝업 처리.
+ * 국내택배 예약 시 내일배송 가능 지역이면 이 팝업이 뜸.
+ * "국내택배로 계속" 버튼을 클릭해야 예약이 진행됨.
+ *
+ * 여러 방법을 순차적으로 시도:
+ * 1. Playwright locator (텍스트 기반)
+ * 2. page.evaluate (DOM 직접 탐색)
+ * 3. 모든 visible 버튼 중 "국내" 텍스트 포함 찾기
+ */
+async function handleNextDayPopup(page: Page): Promise<void> {
+  // 방법 1: Playwright 텍스트 locator — 가장 확실
+  for (const text of ["국내택배로 계속", "국내택배로 진행"]) {
+    const btn = page.locator(`a:has-text("${text}"), button:has-text("${text}")`).first();
+    if (await btn.isVisible({ timeout: 1500 }).catch(() => false)) {
+      console.log(`[booking] 내일배송 전환 팝업 발견 — "${text}" 클릭 (locator)`);
+      await btn.click();
+      await page.waitForTimeout(ACTION_DELAY_MS * 2);
+      return;
+    }
+  }
+
+  // 방법 2: page.evaluate — DOM 직접 검색 (텍스트 부분 일치)
+  const clicked = await page.evaluate(() => {
+    const all = Array.from(document.querySelectorAll("a, button")) as HTMLElement[];
+    for (const el of all) {
+      const txt = el.textContent?.trim() ?? "";
+      if (
+        txt.includes("국내택배") &&
+        el.offsetParent !== null &&
+        el.offsetWidth > 0
+      ) {
+        el.click();
+        return txt;
+      }
+    }
+    return null;
+  });
+  if (clicked) {
+    console.log(`[booking] 내일배송 전환 팝업 — "${clicked}" 클릭 (evaluate)`);
+    await page.waitForTimeout(ACTION_DELAY_MS * 2);
+    return;
+  }
+
+  // 팝업이 없었으면 조용히 넘어감
 }
 
 /**

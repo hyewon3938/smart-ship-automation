@@ -15,35 +15,31 @@ import { GS_URLS, LOGIN_SELECTORS, ACTION_DELAY_MS } from "./selectors";
 import { getConfigValue } from "@/lib/settings";
 import { syncCookiesToServer } from "@/lib/sync-to-server";
 
+/** 쿠키 최대 유효 시간 (시간) */
+const COOKIE_MAX_AGE_HOURS = 24;
+
 const COOKIES_PATH = path.join(process.cwd(), "data", "cookies.json");
 
 // ── 공개 API ──
 
 /**
- * GS택배 로그인 유효성 확인.
- * Playwright로 실제 페이지에 접속하여 로그인 상태를 검증한다.
- * (쿠키 파일이 있어도 실제 세션이 만료되었을 수 있으므로)
+ * GS택배 로그인 유효성 간이 확인.
+ * 쿠키 파일 존재 여부 + 수정 시간 기반 (24시간 이내면 유효).
+ * Playwright를 열지 않으므로 브라우저 창이 뜨지 않음.
  */
-export async function checkCookieValidity(): Promise<{
+export function checkCookieValidity(): {
   valid: boolean;
   lastSyncAt: string | null;
-}> {
-  const lastSyncAt = getCookieFileTime();
-
-  if (!fs.existsSync(COOKIES_PATH)) {
-    return { valid: false, lastSyncAt: null };
-  }
-
+} {
   try {
-    const page = await newPage();
-    try {
-      const loggedIn = await isLoggedIn(page);
-      return { valid: loggedIn, lastSyncAt };
-    } finally {
-      await page.close().catch(() => {});
+    if (!fs.existsSync(COOKIES_PATH)) {
+      return { valid: false, lastSyncAt: null };
     }
+    const stat = fs.statSync(COOKIES_PATH);
+    const ageHours = (Date.now() - stat.mtime.getTime()) / (1000 * 60 * 60);
+    return { valid: ageHours < COOKIE_MAX_AGE_HOURS, lastSyncAt: stat.mtime.toISOString() };
   } catch {
-    return { valid: false, lastSyncAt };
+    return { valid: false, lastSyncAt: null };
   }
 }
 
