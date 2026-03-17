@@ -25,6 +25,8 @@ import { countGroupsByStatus, groupOrdersByOrderId } from "@/lib/groupOrders";
 
 import type { DeliveryType, OrderStatus } from "@/types";
 
+const isServerMode = process.env.NEXT_PUBLIC_DEPLOY_MODE === "server";
+
 export function Dashboard() {
   const [statusFilter, setStatusFilter] = useState<OrderStatus | undefined>(
     "pending"
@@ -171,9 +173,9 @@ export function Dashboard() {
         toast.success(result.message);
         setSelectedIds(new Set());
         setIsBookingDialogOpen(false);
-        // 전체 보기로 전환하여 booking→booked 진행 상황 표시
-        setStatusFilter(undefined);
-        bookingPhase.current = "waiting";
+        // 예약 완료 → 예약완료 탭으로 이동 + 데이터 갱신
+        void queryClient.invalidateQueries({ queryKey: ["orders"] });
+        setStatusFilter("booked");
       },
       onError: (error) => {
         toast.error(`예약 실패: ${error.message}`);
@@ -192,35 +194,39 @@ export function Dashboard() {
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <button
-            onClick={() => void handleGsLogin()}
-            disabled={isLoggingIn}
-            className={`text-sm hover:text-foreground disabled:opacity-50 ${
-              isLoggingIn
-                ? "animate-pulse text-muted-foreground"
-                : isCookieExpired
-                  ? "text-orange-600 font-medium"
-                  : "text-muted-foreground"
-            }`}
-          >
-            {isLoggingIn ? "로그인 중..." : `GS로그인${isCookieExpired ? " (만료)" : ""}`}
-          </button>
+          {!isServerMode && (
+            <button
+              onClick={() => void handleGsLogin()}
+              disabled={isLoggingIn}
+              className={`text-sm hover:text-foreground disabled:opacity-50 ${
+                isLoggingIn
+                  ? "animate-pulse text-muted-foreground"
+                  : isCookieExpired
+                    ? "text-orange-600 font-medium"
+                    : "text-muted-foreground"
+              }`}
+            >
+              {isLoggingIn ? "로그인 중..." : `GS로그인${isCookieExpired ? " (만료)" : ""}`}
+            </button>
+          )}
           <Link
             href="/settings"
             className="text-sm text-muted-foreground hover:text-foreground"
           >
             설정
           </Link>
-          <SyncButton
-            lastSyncTime={lastSyncTime}
-            isPending={syncMutation.isPending}
-            onSync={handleSync}
-          />
+          {!isServerMode && (
+            <SyncButton
+              lastSyncTime={lastSyncTime}
+              isPending={syncMutation.isPending}
+              onSync={handleSync}
+            />
+          )}
         </div>
       </div>
 
-      {/* GS택배 로그인 만료 배너 */}
-      {isCookieExpired && (
+      {/* GS택배 로그인 만료 배너 (로컬 모드만) */}
+      {!isServerMode && isCookieExpired && (
         <div className="flex items-center justify-between gap-3 rounded-lg border border-orange-200 bg-orange-50 px-4 py-3 text-sm">
           <span className="text-orange-800">
             GS택배 로그인 세션이 만료되었습니다. 예약 전에 로그인해주세요.
@@ -263,11 +269,12 @@ export function Dashboard() {
           onSelectedChange={setSelectedIds}
           onGroupDeliveryTypeChange={handleGroupDeliveryTypeChange}
           onGroupStatusChange={handleGroupStatusChange}
+          selectable={!isServerMode}
         />
       )}
 
-      {/* 액션 바 */}
-      {orders.length > 0 && (
+      {/* 액션 바 (로컬 모드만) */}
+      {!isServerMode && orders.length > 0 && (
         <div className="flex items-center justify-between gap-4 pt-2 border-t">
           <span className="text-sm text-muted-foreground">
             {selectedIds.size > 0 ? (
@@ -290,16 +297,16 @@ export function Dashboard() {
       )}
 
       {/* 발송처리 패널 (booked 주문이 있을 때만 표시) */}
-      <DispatchPanel orders={allOrders} />
+      <DispatchPanel orders={allOrders} isServerMode={isServerMode} />
 
-      {/* 예약 확인 다이얼로그 */}
-      <BookingConfirmDialog
+      {/* 예약 확인 다이얼로그 (로컬 모드만) */}
+      {!isServerMode && <BookingConfirmDialog
         open={isBookingDialogOpen}
         onOpenChange={setIsBookingDialogOpen}
         selectedOrders={selectedOrders}
         isPending={bookMutation.isPending}
         onConfirm={handleBookConfirm}
-      />
+      />}
     </div>
   );
 }
