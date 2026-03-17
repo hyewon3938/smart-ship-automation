@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
+import { useEffect, useRef } from "react";
 
 import { BookingConfirmDialog } from "@/components/BookingConfirmDialog";
 import { DispatchPanel } from "@/components/DispatchPanel";
-import { GsLoginModal } from "@/components/GsLoginModal";
 import { OrderTable } from "@/components/OrderTable";
 import { OrderTableSkeleton } from "@/components/OrderTableSkeleton";
 import { StatusFilter } from "@/components/StatusFilter";
@@ -31,7 +31,7 @@ export function Dashboard() {
   );
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [isBookingDialogOpen, setIsBookingDialogOpen] = useState(false);
-  const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
 
   // 예약 진행 추적 (2단계):
   // 1단계(waiting): 예약 시작 → "booking" 상태가 나타날 때까지 대기
@@ -113,6 +113,25 @@ export function Dashboard() {
     });
   }
 
+  async function handleGsLogin() {
+    setIsLoggingIn(true);
+    toast.info("브라우저에서 GS택배 로그인을 진행합니다. CAPTCHA를 처리해주세요.");
+    try {
+      const res = await fetch("/api/gs-login", { method: "POST" });
+      const data = (await res.json()) as { success: boolean; message: string };
+      if (data.success) {
+        toast.success(data.message);
+        void cookieStatusQuery.refetch();
+      } else {
+        toast.error(data.message);
+      }
+    } catch {
+      toast.error("로그인 요청 실패");
+    } finally {
+      setIsLoggingIn(false);
+    }
+  }
+
   function handleGroupDeliveryTypeChange(
     orderId: string,
     deliveryType: DeliveryType
@@ -174,14 +193,17 @@ export function Dashboard() {
         </div>
         <div className="flex items-center gap-3">
           <button
-            onClick={() => setIsLoginModalOpen(true)}
-            className={`text-sm hover:text-foreground ${
-              isCookieExpired
-                ? "text-orange-600 font-medium"
-                : "text-muted-foreground"
+            onClick={() => void handleGsLogin()}
+            disabled={isLoggingIn}
+            className={`text-sm hover:text-foreground disabled:opacity-50 ${
+              isLoggingIn
+                ? "animate-pulse text-muted-foreground"
+                : isCookieExpired
+                  ? "text-orange-600 font-medium"
+                  : "text-muted-foreground"
             }`}
           >
-            GS로그인{isCookieExpired ? " (만료)" : ""}
+            {isLoggingIn ? "로그인 중..." : `GS로그인${isCookieExpired ? " (만료)" : ""}`}
           </button>
           <Link
             href="/settings"
@@ -207,9 +229,10 @@ export function Dashboard() {
             variant="outline"
             size="sm"
             className="shrink-0 border-orange-300 text-orange-700 hover:bg-orange-100"
-            onClick={() => setIsLoginModalOpen(true)}
+            disabled={isLoggingIn}
+            onClick={() => void handleGsLogin()}
           >
-            GS택배 로그인
+            {isLoggingIn ? "로그인 중..." : "GS택배 로그인"}
           </Button>
         </div>
       )}
@@ -276,16 +299,6 @@ export function Dashboard() {
         selectedOrders={selectedOrders}
         isPending={bookMutation.isPending}
         onConfirm={handleBookConfirm}
-      />
-
-      {/* GS택배 원격 로그인 모달 */}
-      <GsLoginModal
-        open={isLoginModalOpen}
-        onOpenChange={setIsLoginModalOpen}
-        onLoginSuccess={() => {
-          cookieStatusQuery.refetch();
-          toast.success("GS택배 로그인 완료!");
-        }}
       />
     </div>
   );
