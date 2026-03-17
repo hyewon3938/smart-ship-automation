@@ -1,5 +1,4 @@
 import { scrapeTrackingNumbers } from "@/lib/gs-delivery/scrape-tracking";
-import { LoginError } from "@/lib/gs-delivery/auth";
 import { dispatchOrders, DELIVERY_COMPANY_CODES } from "@/lib/naver/dispatch";
 import { fetchDeliveryStatuses } from "@/lib/naver/orders";
 import {
@@ -102,13 +101,10 @@ export async function checkAndDispatch(): Promise<CheckAndDispatchResult> {
             );
           }
         } catch (err) {
-          if (err instanceof LoginError) {
-            // 쿠키 만료 — 로그만 남기고 스크래핑 스킵 (다음 폴링에서 재시도)
-            console.warn(`[dispatch-worker] ⚠️ GS택배 쿠키 만료 — 운송장 스크래핑 스킵. 로컬에서 로그인 후 쿠키를 동기화해주세요.`);
-            result.errors.push("GS택배 쿠키 만료");
-          } else {
-            throw err;
-          }
+          // 쿠키 만료 또는 스크래핑 실패 — 로그만 남기고 스킵 (다음 폴링에서 재시도)
+          const msg = err instanceof Error ? err.message : "알 수 없는 오류";
+          console.warn(`[dispatch-worker] ⚠️ 운송장 스크래핑 실패 — ${msg}`);
+          result.errors.push(msg);
         }
       }
 
