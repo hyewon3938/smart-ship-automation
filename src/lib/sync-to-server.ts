@@ -82,3 +82,11 @@ export async function syncCookiesToServer(
 ): Promise<boolean> {
   return postToServer("/api/internal/cookies", { cookies });
 }
+
+/** 운송장번호를 서버에 동기화 (로컬 스크래핑 결과 전송) */
+export async function syncTrackingNumbers(
+  items: Array<{ orderId: string; trackingNumber: string }>
+): Promise<boolean> {
+  if (items.length === 0) return true;
+  return postToServer("/api/internal/tracking", { items });
+}
