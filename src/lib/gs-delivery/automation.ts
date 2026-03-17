@@ -211,7 +211,7 @@ async function fillAndSubmitForm(
     console.log(`[booking]   물품 가액: ${priceInManWon}만원`);
 
     // 2-4. 예약명: #reserved_comments (placeholder="예약명")
-    const reservationName = `${task.recipientName}님`;
+    const reservationName = sanitizeName(`${task.recipientName}님`);
     await page.locator(S.RESERVATION_NAME).fill(reservationName);
     console.log(`[booking]   예약명: ${reservationName} ✓`);
 
@@ -290,6 +290,65 @@ async function fillAndSubmitForm(
       console.log(`[booking]   주소록 항목 선택 실패`);
     }
     await page.waitForTimeout(ACTION_DELAY_MS * 2);
+
+    // 선택 후 검증: 보내는 분 이름이 "리커밋"인지 확인
+    const senderName = await page.evaluate(() => {
+      const el = document.querySelector("#real_sender_name") as HTMLInputElement | null;
+      return el?.value ?? "";
+    });
+    if (!senderName.includes("리커밋")) {
+      console.warn(`[booking]   ⚠️ 보내는 분이 "${senderName}" — "리커밋"이 아님! 재시도...`);
+
+      // 주소록 레이어가 닫혔을 수 있으므로 다시 열기
+      if (addrBtnVisible) {
+        await page.locator(S.SENDER_ADDRESSBOOK_BTN).click();
+      } else {
+        await page.evaluate(() => {
+          const els = Array.from(document.querySelectorAll("a, button")) as HTMLElement[];
+          for (const el of els) {
+            if (el.textContent?.trim().includes("나의 주소록") && el.offsetParent !== null) {
+              el.click();
+              return;
+            }
+          }
+        });
+      }
+      await page.waitForTimeout(ACTION_DELAY_MS * 4);
+
+      // 재시도: 더 넓은 범위로 "리커밋" 검색
+      const retryResult = await page.evaluate(() => {
+        const layer = document.querySelector("#layer_myAddrList") || document.body;
+        // 레이어 전체 텍스트에서 "리커밋" 포함된 클릭 가능 요소 찾기
+        const allElements = layer.querySelectorAll("*");
+        for (const el of Array.from(allElements)) {
+          const htmlEl = el as HTMLElement;
+          // "리커밋"이 포함된 행의 선택 버튼 찾기
+          if (htmlEl.textContent?.includes("리커밋") && (htmlEl.tagName === "TR" || htmlEl.tagName === "LI" || htmlEl.tagName === "DIV")) {
+            const btn = htmlEl.querySelector("a, button") as HTMLElement | null;
+            if (btn && btn.offsetParent !== null) {
+              btn.click();
+              return "리커밋 (재시도)";
+            }
+          }
+        }
+        return null;
+      });
+      if (retryResult) {
+        console.log(`[booking]   주소록 "${retryResult}" 선택 ✓`);
+        await page.waitForTimeout(ACTION_DELAY_MS * 2);
+      }
+
+      // 최종 검증
+      const finalSenderName = await page.evaluate(() => {
+        const el = document.querySelector("#real_sender_name") as HTMLInputElement | null;
+        return el?.value ?? "";
+      });
+      if (!finalSenderName.includes("리커밋")) {
+        console.error(`[booking]   ❌ 보내는 분 최종값: "${finalSenderName}" — 리커밋 선택 실패`);
+        throw new Error(`보내는 분이 "${finalSenderName}"(으)로 설정됨. 주소록에서 "리커밋"을 찾을 수 없습니다.`);
+      }
+    }
+    console.log(`[booking]   보내는 분 확인: "${senderName.includes("리커밋") ? senderName : "리커밋"}" ✓`);
     console.log(`[booking] ${currentStep} ✓`);
 
     // ── 4. 받는 분 정보 ──
@@ -317,7 +376,7 @@ async function fillAndSubmitForm(
           addrEl.dispatchEvent(new Event("change", { bubbles: true }));
         }
       },
-      { zip: task.recipientZipCode, addr: task.recipientAddress }
+      { zip: task.recipientZipCode, addr: sanitizeAddress(task.recipientAddress) }
     );
     console.log(`[booking]   우편번호: ${task.recipientZipCode} ✓`);
     console.log(`[booking]   주소: ${task.recipientAddress} ✓`);
@@ -325,13 +384,15 @@ async function fillAndSubmitForm(
 
     // 상세주소 (#receiver_detail_addr — editable)
     if (task.recipientAddressDetail) {
-      await page.locator(S.RECIPIENT_ADDRESS_DETAIL).fill(task.recipientAddressDetail);
-      console.log(`[booking]   상세주소: ${task.recipientAddressDetail} ✓`);
+      const cleanDetail = sanitizeAddress(task.recipientAddressDetail);
+      await page.locator(S.RECIPIENT_ADDRESS_DETAIL).fill(cleanDetail);
+      console.log(`[booking]   상세주소: ${task.recipientAddressDetail} → ${cleanDetail} ✓`);
     }
 
     // 이름 (주소 설정 후에 입력 — 사이트 JS 리셋 방지)
-    await page.locator(S.RECIPIENT_NAME).fill(task.recipientName);
-    console.log(`[booking]   이름: ${task.recipientName} ✓`);
+    const cleanName = sanitizeName(task.recipientName);
+    await page.locator(S.RECIPIENT_NAME).fill(cleanName);
+    console.log(`[booking]   이름: ${task.recipientName} → ${cleanName} ✓`);
 
     // 전화번호 — 원본이 이미 하이픈 포함이면 그대로 사용
     // 네이버 API 데이터: "010-1234-5678", "0502-2741-8150" 등
@@ -359,13 +420,40 @@ async function fillAndSubmitForm(
     // ── 4-1. 중간 팝업 처리 (파손면책 동의 등) ──
     await dismissPopups(page);
 
-    // ── 5. 제출 ──
+    // ── 5. 예약 제출 ──
     currentStep = "5. 예약 제출";
     console.log(`[booking] ${currentStep}`);
     await page.locator(S.SUBMIT).click();
 
-    // 제출 후 팝업 처리 (예약 확인, 파손면책 동의 등)
+    // 제출 후 팝업 처리
     await page.waitForTimeout(ACTION_DELAY_MS * 2);
+
+    // "내일배송 전환 안내" 팝업 — "국내택배로 계속" 버튼 클릭
+    // 국내택배를 예약했는데 내일배송 가능 지역이면 이 팝업이 뜸
+    const domesticContinueClicked = await page.evaluate(() => {
+      const keywords = ["국내택배로 계속", "국내택배로 진행", "국내택배 계속"];
+      const candidates = Array.from(
+        document.querySelectorAll("a, button")
+      ) as HTMLElement[];
+      for (const kw of keywords) {
+        for (const el of candidates) {
+          if (
+            el.textContent?.trim().includes(kw) &&
+            el.offsetParent !== null &&
+            el.offsetWidth > 0
+          ) {
+            el.click();
+            return kw;
+          }
+        }
+      }
+      return null;
+    });
+    if (domesticContinueClicked) {
+      console.log(`[booking] 내일배송 전환 팝업 — "${domesticContinueClicked}" 클릭 ✓`);
+      await page.waitForTimeout(ACTION_DELAY_MS * 2);
+    }
+
     await dismissPopups(page);
 
     const confirmBtn = page.locator(S.CONFIRM_OK);
@@ -500,4 +588,22 @@ async function saveScreenshot(
  */
 function sanitizeDeliveryMessage(message: string): string {
   return message.replace(/[^\uAC00-\uD7A3a-zA-Z0-9 .,\-()\/]/g, "").trim();
+}
+
+/**
+ * 이름 필드 sanitize.
+ * 허용: 한글, 영문, 숫자, 공백
+ * 네이버 주문 데이터에 마스킹(김*수) 또는 특수문자가 있을 수 있음.
+ */
+function sanitizeName(name: string): string {
+  // 마스킹 문자 * → 빈칸으로 제거 (김*수 → 김수)
+  return name.replace(/[^\uAC00-\uD7A3a-zA-Z0-9 ]/g, "").trim();
+}
+
+/**
+ * 주소 필드 sanitize.
+ * 허용: 한글, 영문, 숫자, 공백, 쉼표, 마침표, 하이픈, 괄호, 슬래시, #
+ */
+function sanitizeAddress(addr: string): string {
+  return addr.replace(/[^\uAC00-\uD7A3a-zA-Z0-9 .,\-()\/\#]/g, "").trim();
 }
