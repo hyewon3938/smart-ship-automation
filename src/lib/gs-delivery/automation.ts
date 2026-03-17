@@ -510,6 +510,7 @@ async function fillAndSubmitForm(
       return { success: true, reservationNo };
     }
 
+    console.warn("[booking] ⚠️ 예약번호 미확인 — 성공 처리하지만 예약번호 누락");
     return { success: true }; // 제출 클릭까지 했으므로 일단 성공 처리
   } catch (error) {
     const errorMsg =
@@ -556,12 +557,19 @@ async function fetchLatestReservationNo(page: Page): Promise<string> {
 
     // 3번째 셀 (index 2) = 예약번호
     const rawNo = ((await cells[2].textContent()) ?? "").trim();
-    if (rawNo && /^\d[\d-]+\d$/.test(rawNo)) {
-      console.log(`[booking] 예약 목록에서 최신 예약번호 추출: ${rawNo}`);
-      return rawNo;
+    // 예약번호: 숫자만("11956924641") 또는 대시 포함("1195-2684-971") 모두 허용
+    const noMatch = rawNo.match(/(\d[\d-]{5,}\d)/);
+    if (noMatch) {
+      const extracted = noMatch[1];
+      console.log(`[booking] 예약 목록에서 최신 예약번호 추출: ${extracted} (raw: "${rawNo}")`);
+      return extracted;
     }
 
-    console.warn(`[booking] 예약 목록 예약번호 형식 불일치: "${rawNo}"`);
+    // 전체 셀 내용 디버깅
+    const allCellTexts = await Promise.all(
+      cells.map(async (c, i) => `[${i}]="${((await c.textContent()) ?? "").trim().slice(0, 30)}"`)
+    );
+    console.warn(`[booking] 예약 목록 예약번호 형식 불일치: "${rawNo}". 전체 셀: ${allCellTexts.join(", ")}`);
     return "";
   } catch (err) {
     console.warn(

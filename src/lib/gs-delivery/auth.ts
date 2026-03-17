@@ -191,10 +191,19 @@ async function syncCookiesAfterLogin(): Promise<void> {
 
 /**
  * 로그인 상태를 보장한다. 미로그인 시 로그인 시도.
+ *
+ * 서버 모드에서는 로그인을 시도하지 않는다.
+ * 서버에서는 Turnstile CAPTCHA를 통과할 수 없으므로,
+ * 로컬에서 동기화된 쿠키만 사용한다. 쿠키 만료 시 에러를 던져 폴링을 스킵한다.
  */
 export async function ensureLoggedIn(page: Page): Promise<void> {
   const loggedIn = await isLoggedIn(page);
   if (!loggedIn) {
+    if (process.env.DEPLOY_MODE === "server") {
+      throw new LoginError(
+        "GS택배 쿠키가 만료되었습니다. 로컬에서 로그인하여 쿠키를 동기화해주세요."
+      );
+    }
     await login(page);
   }
 }
