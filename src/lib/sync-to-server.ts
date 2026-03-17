@@ -16,38 +16,53 @@ function canSync(): boolean {
   );
 }
 
+const MAX_RETRIES = 2;
+const RETRY_DELAYS = [2000, 5000]; // ms
+
 async function postToServer(endpoint: string, data: unknown): Promise<boolean> {
   if (!canSync()) return false;
 
   const url = `${getServerUrl()}${endpoint}`;
-  try {
-    const res = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": getApiKey()!,
-      },
-      body: JSON.stringify(data),
-      signal: AbortSignal.timeout(10_000),
-    });
 
-    if (!res.ok) {
-      const text = await res.text().catch(() => "");
-      console.warn(
-        `[sync] 서버 동기화 실패 (${endpoint}): ${res.status} ${text.slice(0, 100)}`
-      );
-      return false;
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    if (attempt > 0) {
+      const delay = RETRY_DELAYS[attempt - 1];
+      console.log(`[sync] 재시도 ${attempt}/${MAX_RETRIES} (${delay / 1000}초 후) — ${endpoint}`);
+      await new Promise((r) => setTimeout(r, delay));
     }
 
-    console.log(`[sync] 서버 동기화 성공: ${endpoint}`);
-    return true;
-  } catch (err) {
-    console.warn(
-      `[sync] 서버 연결 실패 (${endpoint}):`,
-      err instanceof Error ? err.message : err
-    );
-    return false;
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": getApiKey()!,
+        },
+        body: JSON.stringify(data),
+        signal: AbortSignal.timeout(10_000),
+      });
+
+      if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        console.warn(
+          `[sync] 서버 동기화 실패 (${endpoint}): ${res.status} ${text.slice(0, 100)}`
+        );
+        continue; // 재시도
+      }
+
+      console.log(`[sync] 서버 동기화 성공: ${endpoint}`);
+      return true;
+    } catch (err) {
+      console.warn(
+        `[sync] 서버 연결 실패 (${endpoint}):`,
+        err instanceof Error ? err.message : err
+      );
+      // 마지막 시도가 아니면 계속 재시도
+    }
   }
+
+  console.error(`[sync] 서버 동기화 최종 실패 (${MAX_RETRIES + 1}회 시도): ${endpoint}`);
+  return false;
 }
 
 /** GS택배 예약 결과를 서버 DB에 동기화 */
