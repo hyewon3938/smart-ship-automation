@@ -32,6 +32,8 @@ interface OrderTableProps {
   onSelectedChange: (ids: Set<number>) => void;
   onGroupDeliveryTypeChange: (orderId: string, type: DeliveryType) => void;
   onGroupStatusChange: (orderId: string, status: OrderStatus) => void;
+  /** false로 설정하면 체크박스 컬럼 숨김 (서버 모드) */
+  selectable?: boolean;
 }
 
 const DELIVERY_TYPE_LABELS: Record<string, string> = {
@@ -69,6 +71,7 @@ export function OrderTable({
   onSelectedChange,
   onGroupDeliveryTypeChange,
   onGroupStatusChange,
+  selectable = true,
 }: OrderTableProps) {
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [logDialogOrderId, setLogDialogOrderId] = useState<number | null>(null);
@@ -137,15 +140,17 @@ export function OrderTable({
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead className="w-10">
-              <Checkbox
-                checked={allSelectableSelected}
-                indeterminate={someSelectableSelected}
-                onCheckedChange={handleSelectAll}
-                disabled={selectableOrders.length === 0}
-                aria-label="전체 선택"
-              />
-            </TableHead>
+            {selectable && (
+              <TableHead className="w-10">
+                <Checkbox
+                  checked={allSelectableSelected}
+                  indeterminate={someSelectableSelected}
+                  onCheckedChange={handleSelectAll}
+                  disabled={selectableOrders.length === 0}
+                  aria-label="전체 선택"
+                />
+              </TableHead>
+            )}
             <TableHead className="w-8" />
             <TableHead className="w-24 min-w-[96px]">수령인</TableHead>
             <TableHead>배송지</TableHead>
@@ -178,6 +183,7 @@ export function OrderTable({
                 someGroupPendingSelected={someGroupPendingSelected}
                 hasSelectable={selectableInGroup.length > 0}
                 fullAddress={fullAddress}
+                selectable={selectable}
                 onToggle={() => handleToggleGroup(group.orderId)}
                 onGroupCheck={(checked) =>
                   handleGroupCheckChange(group, checked)
@@ -209,6 +215,7 @@ interface GroupRowsProps {
   someGroupPendingSelected: boolean;
   hasSelectable: boolean;
   fullAddress: string;
+  selectable: boolean;
   onToggle: () => void;
   onGroupCheck: (checked: boolean) => void;
   onGroupDeliveryTypeChange: (orderId: string, type: DeliveryType) => void;
@@ -245,6 +252,7 @@ function GroupRows({
   someGroupPendingSelected,
   hasSelectable,
   fullAddress,
+  selectable,
   onToggle,
   onGroupCheck,
   onGroupDeliveryTypeChange,
@@ -267,15 +275,17 @@ function GroupRows({
         } cursor-pointer`}
         onClick={onToggle}
       >
-        <TableCell onClick={(e) => e.stopPropagation()}>
-          <Checkbox
-            checked={allGroupPendingSelected}
-            indeterminate={someGroupPendingSelected}
-            onCheckedChange={onGroupCheck}
-            disabled={!hasSelectable}
-            aria-label={`${group.recipientName} 그룹 선택`}
-          />
-        </TableCell>
+        {selectable && (
+          <TableCell onClick={(e) => e.stopPropagation()}>
+            <Checkbox
+              checked={allGroupPendingSelected}
+              indeterminate={someGroupPendingSelected}
+              onCheckedChange={onGroupCheck}
+              disabled={!hasSelectable}
+              aria-label={`${group.recipientName} 그룹 선택`}
+            />
+          </TableCell>
+        )}
         <TableCell className="px-1">
           {isExpanded ? (
             <ChevronDown className="h-4 w-4 text-muted-foreground" />
@@ -417,7 +427,7 @@ function GroupRows({
               key={order.id}
               className="border-0 bg-muted/10"
             >
-              <TableCell />
+              {selectable && <TableCell />}
               <TableCell />
               <TableCell colSpan={3}>
                 <div className="space-y-0.5 pl-2">

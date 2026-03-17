@@ -20,10 +20,11 @@ function formatDispatchedAt(iso: string): string {
 
 interface Props {
   orders: Order[];
+  isServerMode?: boolean;
 }
 
 /** booked 상태 주문을 orderId 기준으로 그룹화하여 발송처리 현황 표시 */
-export function DispatchPanel({ orders }: Props) {
+export function DispatchPanel({ orders, isServerMode = false }: Props) {
   // 훅은 항상 최상단에서 호출 (Rules of Hooks)
   const { data: settingsData } = useDispatchSettings();
   const syncMutation = useSyncTracking();
@@ -80,14 +81,16 @@ export function DispatchPanel({ orders }: Props) {
             <Badge variant={isAutoMode ? "default" : "outline"} className="text-xs">
               {isAutoMode ? "자동 발송" : "수동 승인"}
             </Badge>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={handleSyncTracking}
-              disabled={syncMutation.isPending}
-            >
-              {syncMutation.isPending ? "동기화 중..." : "운송장 동기화"}
-            </Button>
+            {!isServerMode && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleSyncTracking}
+                disabled={syncMutation.isPending}
+              >
+                {syncMutation.isPending ? "동기화 중..." : "운송장 동기화"}
+              </Button>
+            )}
           </div>
         </div>
       </CardHeader>
