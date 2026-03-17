@@ -1,4 +1,5 @@
 import { scrapeTrackingNumbers } from "@/lib/gs-delivery/scrape-tracking";
+import { LoginError } from "@/lib/gs-delivery/auth";
 import { dispatchOrders, DELIVERY_COMPANY_CODES } from "@/lib/naver/dispatch";
 import { fetchDeliveryStatuses } from "@/lib/naver/orders";
 import {
@@ -75,29 +76,39 @@ export async function checkAndDispatch(): Promise<CheckAndDispatchResult> {
 
       // 3. 예약번호가 있는 주문만 운송장번호 스크래핑
       if (reservationNos.length > 0) {
-        const trackingResults = await scrapeTrackingNumbers(reservationNos);
+        try {
+          const trackingResults = await scrapeTrackingNumbers(reservationNos);
 
-        for (const tr of trackingResults) {
-          if (!tr.trackingNo) continue;
+          for (const tr of trackingResults) {
+            if (!tr.trackingNo) continue;
 
-          const group = bookedGroups.find(
-            (g) => g.bookingReservationNo === tr.reservationNo
-          );
-          if (!group) continue;
+            const group = bookedGroups.find(
+              (g) => g.bookingReservationNo === tr.reservationNo
+            );
+            if (!group) continue;
 
-          // 이미 운송장번호가 있으면 스킵
-          if (group.trackingNumber) continue;
+            // 이미 운송장번호가 있으면 스킵
+            if (group.trackingNumber) continue;
 
-          updateTrackingNumbers(group.orderId, tr.trackingNo);
-          addBookingLog(
-            group.firstDbId,
-            "tracking",
-            `운송장번호 감지: ${tr.trackingNo}`
-          );
-          result.tracked++;
-          console.log(
-            `[dispatch-worker] 운송장 감지 — 주문: ${group.orderId}, 운송장: ${tr.trackingNo}`
-          );
+            updateTrackingNumbers(group.orderId, tr.trackingNo);
+            addBookingLog(
+              group.firstDbId,
+              "tracking",
+              `운송장번호 감지: ${tr.trackingNo}`
+            );
+            result.tracked++;
+            console.log(
+              `[dispatch-worker] 운송장 감지 — 주문: ${group.orderId}, 운송장: ${tr.trackingNo}`
+            );
+          }
+        } catch (err) {
+          if (err instanceof LoginError) {
+            // 쿠키 만료 — 로그만 남기고 스크래핑 스킵 (다음 폴링에서 재시도)
+            console.warn(`[dispatch-worker] ⚠️ GS택배 쿠키 만료 — 운송장 스크래핑 스킵. 로컬에서 로그인 후 쿠키를 동기화해주세요.`);
+            result.errors.push("GS택배 쿠키 만료");
+          } else {
+            throw err;
+          }
         }
       }
 
