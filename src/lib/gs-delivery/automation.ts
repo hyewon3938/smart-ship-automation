@@ -5,6 +5,7 @@ import {
   GS_URLS,
   DOMESTIC_SELECTORS,
   NEXT_DAY_SELECTORS,
+  RESERVATION_LIST_SELECTORS as RSEL,
   ACTION_DELAY_MS,
   PAGE_LOAD_TIMEOUT_MS,
 } from "./selectors";
@@ -457,14 +458,27 @@ async function fillAndSubmitForm(
     const urlChanged = !currentUrl.includes("domestic/index.do") && !currentUrl.includes("nextDay/nextIndex.do");
 
     // 예약번호 추출 시도 (페이지에 표시된 경우)
-    const reservationNo = await page.evaluate(() => {
-      // 다양한 패턴으로 예약번호 탐색
+    let reservationNo = await page.evaluate(() => {
       const text = document.body.innerText;
-      const match = text.match(/예약번호[:\s]*([A-Z0-9-]+)/);
-      return match?.[1] ?? "";
+      // 다양한 패턴으로 예약번호 탐색
+      const patterns = [
+        /예약번호[:\s]*([A-Z0-9-]+)/,
+        /예약번호[:\s]*(\d[\d-]+\d)/,
+      ];
+      for (const p of patterns) {
+        const m = text.match(p);
+        if (m?.[1]) return m[1];
+      }
+      return "";
     }).catch(() => "");
 
     if (hasSuccessText || urlChanged || reservationNo) {
+      // 예약번호를 못 찾았으면 예약 목록에서 가져오기
+      if (!reservationNo) {
+        console.log(`[booking] 확인 페이지에서 예약번호 못 찾음 — 예약 목록에서 조회`);
+        reservationNo = await fetchLatestReservationNo(page);
+      }
+
       console.log(
         `[booking] ${currentStep} ✓ — 예약번호: ${reservationNo || "(없음)"}, URL변경: ${urlChanged}, 성공텍스트: ${hasSuccessText}`
       );
@@ -482,12 +496,20 @@ async function fillAndSubmitForm(
       .catch(() => false);
 
     if (!formStillVisible) {
-      console.log(`[booking] ${currentStep} ✓ — 폼 사라짐 (성공으로 간주)`);
-      return { success: true };
+      // 폼 사라졌으면 성공이지만 예약번호가 필요 — 예약 목록에서 조회
+      reservationNo = await fetchLatestReservationNo(page);
+      console.log(`[booking] ${currentStep} ✓ — 폼 사라짐 (성공), 예약번호: ${reservationNo || "(없음)"}`);
+      return { success: true, reservationNo: reservationNo || undefined };
     }
 
-    // 폼이 아직 있으면 제출이 안 된 것일 수 있음
-    console.warn(`[booking] ${currentStep} ⚠️ 폼이 아직 남아있음 — 성공 여부 불확실`);
+    // 폼이 아직 있으면 제출이 안 된 것일 수 있음 — 그래도 예약 목록 확인
+    console.warn(`[booking] ${currentStep} ⚠️ 폼이 아직 남아있음 — 예약 목록에서 확인`);
+    reservationNo = await fetchLatestReservationNo(page);
+    if (reservationNo) {
+      console.log(`[booking] 예약 목록에서 최신 예약번호 발견: ${reservationNo} → 성공 처리`);
+      return { success: true, reservationNo };
+    }
+
     return { success: true }; // 제출 클릭까지 했으므로 일단 성공 처리
   } catch (error) {
     const errorMsg =
@@ -503,6 +525,50 @@ async function fillAndSubmitForm(
       error: `[${currentStep}] ${errorMsg}`,
       screenshotPath,
     };
+  }
+}
+
+/**
+ * 예약 목록 페이지에서 가장 최근(첫 번째) 예약번호를 가져온다.
+ * 예약 완료 페이지에서 예약번호 추출이 실패했을 때 fallback으로 사용.
+ */
+async function fetchLatestReservationNo(page: Page): Promise<string> {
+  try {
+    await page.goto(GS_URLS.RESERVATION_LIST, {
+      waitUntil: "domcontentloaded",
+      timeout: PAGE_LOAD_TIMEOUT_MS,
+    });
+    await page.waitForTimeout(ACTION_DELAY_MS * 3);
+
+    const rows = await page.locator(RSEL.ROWS).all();
+    if (rows.length === 0) {
+      console.warn("[booking] 예약 목록이 비어있음");
+      return "";
+    }
+
+    // 첫 번째 행 = 가장 최근 예약
+    const firstRow = rows[0];
+    const cells = await firstRow.locator("td").all();
+    if (cells.length < 3) {
+      console.warn(`[booking] 예약 목록 첫 행 셀 수 부족: ${cells.length}`);
+      return "";
+    }
+
+    // 3번째 셀 (index 2) = 예약번호
+    const rawNo = ((await cells[2].textContent()) ?? "").trim();
+    if (rawNo && /^\d[\d-]+\d$/.test(rawNo)) {
+      console.log(`[booking] 예약 목록에서 최신 예약번호 추출: ${rawNo}`);
+      return rawNo;
+    }
+
+    console.warn(`[booking] 예약 목록 예약번호 형식 불일치: "${rawNo}"`);
+    return "";
+  } catch (err) {
+    console.warn(
+      "[booking] 예약 목록 조회 실패:",
+      err instanceof Error ? err.message : err
+    );
+    return "";
   }
 }
 
