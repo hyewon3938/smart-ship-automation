@@ -510,8 +510,14 @@ async function fillAndSubmitForm(
       return { success: true, reservationNo };
     }
 
-    console.warn("[booking] ⚠️ 예약번호 미확인 — 성공 처리하지만 예약번호 누락");
-    return { success: true }; // 제출 클릭까지 했으므로 일단 성공 처리
+    // 폼이 남아있고 예약번호도 없으면 → 실패
+    const errorScreenshot = await saveScreenshot(page, task.orderDbIds[0]);
+    console.error("[booking] ❌ 예약 실패 — 폼이 남아있고 예약번호도 없음");
+    return {
+      success: false,
+      error: "예약 제출 실패 — 폼이 여전히 표시되고 예약번호를 찾을 수 없습니다. 팝업이나 입력 오류를 확인해주세요.",
+      screenshotPath: errorScreenshot,
+    };
   } catch (error) {
     const errorMsg =
       error instanceof Error ? error.message : "알 수 없는 오류";
@@ -591,40 +597,62 @@ async function fetchLatestReservationNo(page: Page): Promise<string> {
  * 3. 모든 visible 버튼 중 "국내" 텍스트 포함 찾기
  */
 async function handleNextDayPopup(page: Page): Promise<void> {
-  // 방법 1: Playwright 텍스트 locator — 가장 확실
+  // 먼저 팝업이 있는지 빠르게 확인 — 없으면 바로 리턴
+  const hasPopup = await page.evaluate(() => {
+    return document.body.innerText.includes("내일택배로 보낼까요") ||
+           document.body.innerText.includes("내일택배에로 보내");
+  }).catch(() => false);
+
+  if (!hasPopup) return; // 팝업 없으면 대기 없이 즉시 리턴
+
+  console.log(`[booking] 내일배송 전환 팝업 감지!`);
+
+  // 방법 1: 정확한 텍스트로 Playwright locator
   for (const text of ["국내택배로 계속", "국내택배로 진행"]) {
-    const btn = page.locator(`a:has-text("${text}"), button:has-text("${text}")`).first();
-    if (await btn.isVisible({ timeout: 1500 }).catch(() => false)) {
-      console.log(`[booking] 내일배송 전환 팝업 발견 — "${text}" 클릭 (locator)`);
+    const btn = page.locator(`text="${text}"`).first();
+    if (await btn.isVisible({ timeout: 2000 }).catch(() => false)) {
+      console.log(`[booking] "${text}" 클릭 (locator)`);
       await btn.click();
-      await page.waitForTimeout(ACTION_DELAY_MS * 2);
+      await page.waitForTimeout(ACTION_DELAY_MS * 3);
       return;
     }
   }
 
-  // 방법 2: page.evaluate — DOM 직접 검색 (텍스트 부분 일치)
+  // 방법 2: "국내택배로" (뒤에 조사 포함)로 정확히 검색 — "국내택배예약" 제목과 구분
   const clicked = await page.evaluate(() => {
-    const all = Array.from(document.querySelectorAll("a, button")) as HTMLElement[];
+    const all = Array.from(document.querySelectorAll("a, button, div, span")) as HTMLElement[];
     for (const el of all) {
       const txt = el.textContent?.trim() ?? "";
       if (
-        txt.includes("국내택배") &&
+        txt.includes("국내택배로") &&
         el.offsetParent !== null &&
-        el.offsetWidth > 0
+        el.offsetWidth > 0 &&
+        el.offsetHeight > 0
       ) {
         el.click();
-        return txt;
+        return `${el.tagName}: ${txt.slice(0, 30)}`;
       }
     }
     return null;
   });
   if (clicked) {
-    console.log(`[booking] 내일배송 전환 팝업 — "${clicked}" 클릭 (evaluate)`);
-    await page.waitForTimeout(ACTION_DELAY_MS * 2);
+    console.log(`[booking] 내일배송 팝업 — "${clicked}" 클릭 (evaluate)`);
+    await page.waitForTimeout(ACTION_DELAY_MS * 3);
     return;
   }
 
-  // 팝업이 없었으면 조용히 넘어감
+  // 방법 3: 팝업 모달 내 닫기 버튼
+  await page.evaluate(() => {
+    const modals = document.querySelectorAll("[class*='layer'], [class*='pop'], .modal");
+    for (const modal of Array.from(modals)) {
+      const el = modal as HTMLElement;
+      if (el.offsetParent !== null && el.textContent?.includes("내일택배")) {
+        const closeBtn = el.querySelector(".close, .btn-close, [class*='close']") as HTMLElement | null;
+        if (closeBtn) { closeBtn.click(); return; }
+      }
+    }
+  });
+  await page.waitForTimeout(ACTION_DELAY_MS);
 }
 
 /**
