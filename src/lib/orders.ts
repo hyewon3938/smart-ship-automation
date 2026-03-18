@@ -215,6 +215,97 @@ export function getLocalBookedOrders(): Array<{
   });
 }
 
+/** orderId로 주문 상세 데이터 조회 (서버 동기화용) */
+export function getOrderDetailsByOrderId(orderId: string) {
+  return db
+    .select()
+    .from(orders)
+    .where(eq(orders.orderId, orderId))
+    .all();
+}
+
+/**
+ * 로컬에서 전송된 주문 데이터를 서버 DB에 upsert.
+ * 서버 DB에 해당 orderId의 주문이 없으면 INSERT, 있으면 UPDATE.
+ */
+export function upsertOrdersFromLocal(
+  orderId: string,
+  orderItems: Array<{
+    productOrderId: string;
+    orderDate: string;
+    productName: string;
+    quantity: number;
+    optionInfo: string | null;
+    totalPrice: number | null;
+    recipientName: string;
+    recipientPhone: string;
+    recipientAddress: string;
+    recipientAddressDetail: string | null;
+    recipientZipCode: string;
+    shippingMemo: string | null;
+    isNextDayEligible: boolean;
+    selectedDeliveryType: "domestic" | "nextDay";
+  }>,
+  bookingResult?: string,
+  bookingReservationNo?: string
+): void {
+  const now = new Date().toISOString();
+
+  // 기존 주문 확인
+  const existing = db
+    .select({ productOrderId: orders.productOrderId })
+    .from(orders)
+    .where(eq(orders.orderId, orderId))
+    .all();
+
+  const existingProductOrderIds = new Set(existing.map((r) => r.productOrderId));
+
+  for (const item of orderItems) {
+    if (existingProductOrderIds.has(item.productOrderId)) {
+      // 이미 있으면 UPDATE
+      db.update(orders)
+        .set({
+          status: "booked",
+          bookingResult: bookingResult ?? null,
+          bookingReservationNo: bookingReservationNo ?? null,
+          updatedAt: now,
+        })
+        .where(eq(orders.productOrderId, item.productOrderId))
+        .run();
+    } else {
+      // 없으면 INSERT
+      db.insert(orders)
+        .values({
+          orderId,
+          productOrderId: item.productOrderId,
+          orderDate: item.orderDate,
+          productName: item.productName,
+          quantity: item.quantity,
+          optionInfo: item.optionInfo,
+          totalPrice: item.totalPrice,
+          recipientName: item.recipientName,
+          recipientPhone: item.recipientPhone,
+          recipientAddress: item.recipientAddress,
+          recipientAddressDetail: item.recipientAddressDetail,
+          recipientZipCode: item.recipientZipCode,
+          shippingMemo: item.shippingMemo,
+          isNextDayEligible: item.isNextDayEligible,
+          selectedDeliveryType: item.selectedDeliveryType,
+          status: "booked",
+          bookingResult: bookingResult ?? null,
+          bookingReservationNo: bookingReservationNo ?? null,
+          createdAt: now,
+          updatedAt: now,
+        })
+        .run();
+    }
+  }
+
+  console.log(
+    `[orders] upsert 완료: ${orderId} — 기존 ${existingProductOrderIds.size}건, 신규 ${orderItems.length - existingProductOrderIds.size}건`
+  );
+}
+
 /** 운송장번호 업데이트 + pending_dispatch 마킹 (orderId 기준 일괄) */
 export function updateTrackingNumbers(
   orderId: string,
