@@ -207,6 +207,18 @@
 - **이슈/교훈:**
   - 네이버 API DELIVERING 상태 응답 여부는 서버 실제 테스트 필요 (조건형 API에서 지원 확인)
 
+### Bugfix: 운송장번호/발송처리 서버 동기화 누락 수정
+- **완료일:** 2026-03-18
+- **주요 변경:**
+  - `sync-to-server.ts`에 `syncTrackingResult`, `syncDispatchResult` 함수 추가
+  - 서버 수신 API 엔드포인트 추가: `POST /api/internal/tracking-result`, `POST /api/internal/dispatch-result`
+  - `dispatch-worker.ts`: 운송장번호 감지 시 서버 동기화 호출 추가
+  - `dispatch-worker.ts`: 발송처리 성공/실패 시 서버 동기화 호출 추가
+  - `api/dispatch/route.ts`: 수동 발송처리에도 서버 동기화 추가
+- **이슈/교훈:**
+  - 기존에는 예약 결과(booked/failed)만 서버에 동기화되고, 운송장번호와 발송처리 상태는 로컬 DB에만 반영됨 → 서버 대시보드에서 운송장/발송 상태가 보이지 않는 버그
+  - 동기화 누락 시 서버가 영원히 "booked" 상태로 남는 문제
+
 ---
 
 ## 기록 형식 템플릿

@@ -61,6 +61,23 @@ export async function syncBookingResult(data: {
   return postToServer("/api/internal/booking-result", data);
 }
 
+/** 운송장번호 감지 결과를 서버 DB에 동기화 */
+export async function syncTrackingResult(data: {
+  orderId: string;
+  trackingNumber: string;
+}): Promise<boolean> {
+  return postToServer("/api/internal/tracking-result", data);
+}
+
+/** 네이버 발송처리 결과를 서버 DB에 동기화 */
+export async function syncDispatchResult(data: {
+  orderId: string;
+  status: "dispatched" | "dispatch_failed";
+  error?: string;
+}): Promise<boolean> {
+  return postToServer("/api/internal/dispatch-result", data);
+}
+
 /** GS택배 로그인 쿠키를 서버에 동기화 (서버의 headless 스크래핑에 사용) */
 export async function syncCookiesToServer(
   cookies: Array<Record<string, unknown>>

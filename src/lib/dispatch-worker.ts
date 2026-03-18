@@ -14,6 +14,7 @@ import {
   getNextDayDeliveryCode,
   isDispatchAutoMode,
 } from "@/lib/settings";
+import { syncTrackingResult, syncDispatchResult } from "@/lib/sync-to-server";
 
 let pollTimer: ReturnType<typeof setInterval> | null = null;
 let isRunning = false;
@@ -94,6 +95,10 @@ export async function checkAndDispatch(): Promise<CheckAndDispatchResult> {
             "tracking",
             `운송장번호 감지: ${tr.trackingNo}`
           );
+          void syncTrackingResult({
+            orderId: group.orderId,
+            trackingNumber: tr.trackingNo,
+          });
           result.tracked++;
           console.log(
             `[dispatch-worker] 운송장 감지 — 주문: ${group.orderId}, 운송장: ${tr.trackingNo}`
@@ -131,6 +136,10 @@ export async function checkAndDispatch(): Promise<CheckAndDispatchResult> {
                 "dispatch",
                 `네이버 발송처리 완료: ${group.trackingNumber}`
               );
+              void syncDispatchResult({
+                orderId: group.orderId,
+                status: "dispatched",
+              });
               result.dispatched++;
               console.log(
                 `[dispatch-worker] ✅ 발송처리 완료 — 주문: ${group.orderId}`
@@ -143,6 +152,11 @@ export async function checkAndDispatch(): Promise<CheckAndDispatchResult> {
                 "error",
                 `발송처리 실패: ${errMsg}`
               );
+              void syncDispatchResult({
+                orderId: group.orderId,
+                status: "dispatch_failed",
+                error: errMsg,
+              });
               result.errors.push(`${group.orderId}: ${errMsg}`);
               console.error(
                 `[dispatch-worker] ❌ 발송처리 실패 — ${group.orderId}: ${errMsg}`

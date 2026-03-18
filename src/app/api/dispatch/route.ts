@@ -7,6 +7,7 @@ import {
   updateDispatchStatus,
 } from "@/lib/orders";
 import { getNextDayDeliveryCode } from "@/lib/settings";
+import { syncDispatchResult } from "@/lib/sync-to-server";
 
 /** POST /api/dispatch — 특정 주문 그룹 수동 발송처리 */
 export async function POST(request: NextRequest) {
@@ -50,6 +51,7 @@ export async function POST(request: NextRequest) {
         "dispatch",
         `네이버 발송처리 완료: ${group.trackingNumber}`
       );
+      void syncDispatchResult({ orderId, status: "dispatched" });
       return NextResponse.json({ message: "발송처리 완료", orderId });
     }
 
@@ -59,6 +61,11 @@ export async function POST(request: NextRequest) {
       "error",
       `발송처리 실패: ${result.error}`
     );
+    void syncDispatchResult({
+      orderId,
+      status: "dispatch_failed",
+      error: result.error ?? "발송처리 실패",
+    });
     return NextResponse.json(
       { error: result.error ?? "발송처리 실패" },
       { status: 500 }
