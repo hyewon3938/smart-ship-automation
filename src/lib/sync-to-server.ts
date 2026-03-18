@@ -65,7 +65,7 @@ async function postToServer(endpoint: string, data: unknown): Promise<boolean> {
   return false;
 }
 
-/** GS택배 예약 결과를 서버 DB에 동기화 */
+/** GS택배 예약 결과를 서버 DB에 동기화 (주문 데이터 포함 — 서버에 없으면 INSERT) */
 export async function syncBookingResult(data: {
   orderId: string;
   status: "booked" | "failed";
@@ -73,6 +73,37 @@ export async function syncBookingResult(data: {
   bookingReservationNo?: string;
   error?: string;
 }): Promise<boolean> {
+  // booked 성공 시 주문 상세 데이터도 함께 전송 (서버 DB에 없을 경우 INSERT용)
+  if (data.status === "booked") {
+    try {
+      const { getOrderDetailsByOrderId } = await import("@/lib/orders");
+      const orderRows = getOrderDetailsByOrderId(data.orderId);
+      if (orderRows.length > 0) {
+        return postToServer("/api/internal/booking-result", {
+          ...data,
+          orderItems: orderRows.map((r) => ({
+            productOrderId: r.productOrderId,
+            orderDate: r.orderDate,
+            productName: r.productName,
+            quantity: r.quantity,
+            optionInfo: r.optionInfo,
+            totalPrice: r.totalPrice,
+            recipientName: r.recipientName,
+            recipientPhone: r.recipientPhone,
+            recipientAddress: r.recipientAddress,
+            recipientAddressDetail: r.recipientAddressDetail,
+            recipientZipCode: r.recipientZipCode,
+            shippingMemo: r.shippingMemo,
+            isNextDayEligible: r.isNextDayEligible,
+            selectedDeliveryType: r.selectedDeliveryType,
+          })),
+        });
+      }
+    } catch (err) {
+      console.warn("[sync] 주문 상세 조회 실패, 기본 동기화 진행:", err);
+    }
+  }
+
   return postToServer("/api/internal/booking-result", data);
 }
 
