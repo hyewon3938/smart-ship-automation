@@ -191,6 +191,30 @@ export function getBookedOrderGroups(): Array<{
   }));
 }
 
+/** 로컬 DB에서 booked 상태 주문의 동기화용 최소 정보 조회 (orderId 중복 제거) */
+export function getLocalBookedOrders(): Array<{
+  orderId: string;
+  bookingResult: string | null;
+  bookingReservationNo: string | null;
+}> {
+  const rows = db
+    .select({
+      orderId: orders.orderId,
+      bookingResult: orders.bookingResult,
+      bookingReservationNo: orders.bookingReservationNo,
+    })
+    .from(orders)
+    .where(eq(orders.status, "booked" as OrderStatus))
+    .all();
+
+  const seen = new Set<string>();
+  return rows.filter((r) => {
+    if (seen.has(r.orderId)) return false;
+    seen.add(r.orderId);
+    return true;
+  });
+}
+
 /** 운송장번호 업데이트 + pending_dispatch 마킹 (orderId 기준 일괄) */
 export function updateTrackingNumbers(
   orderId: string,

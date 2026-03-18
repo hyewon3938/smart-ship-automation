@@ -83,6 +83,38 @@ export async function syncCookiesToServer(
   return postToServer("/api/internal/cookies", { cookies });
 }
 
+/**
+ * 로컬 DB의 booked 주문을 서버에 재동기화 (멱등).
+ * 예약 직후 동기화가 실패한 경우를 대비하여 큐 처리 완료 시 호출.
+ */
+export async function resyncBookedOrders(): Promise<number> {
+  if (!canSync()) return 0;
+
+  // 순환 참조 방지를 위해 동적 import
+  const { getLocalBookedOrders } = await import("@/lib/orders");
+  const bookedOrders = getLocalBookedOrders();
+  let synced = 0;
+
+  for (const order of bookedOrders) {
+    if (!order.bookingReservationNo) continue;
+
+    const success = await syncBookingResult({
+      orderId: order.orderId,
+      status: "booked",
+      bookingResult: order.bookingResult ?? undefined,
+      bookingReservationNo: order.bookingReservationNo,
+    });
+    if (success) synced++;
+  }
+
+  if (synced > 0) {
+    console.log(
+      `[sync] 재동기화 완료: ${synced}/${bookedOrders.length}건`
+    );
+  }
+  return synced;
+}
+
 /** 운송장번호를 서버에 동기화 (로컬 스크래핑 결과 전송) */
 export async function syncTrackingNumbers(
   items: Array<{ orderId: string; trackingNumber: string }>

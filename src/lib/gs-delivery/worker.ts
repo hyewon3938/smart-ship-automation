@@ -7,7 +7,7 @@ import {
   recoverStuckBookings,
   updateOrderStatusBatch,
 } from "@/lib/orders";
-import { syncBookingResult } from "@/lib/sync-to-server";
+import { resyncBookedOrders, syncBookingResult } from "@/lib/sync-to-server";
 
 import type { BookingTask } from "./types";
 
@@ -68,6 +68,9 @@ async function processNext(): Promise<void> {
 
     if (browserCrashed) {
       drainQueue();
+    } else if (queue.length === 0) {
+      // 큐 처리 완료 — 동기화 누락된 booked 주문 재전송
+      void resyncBookedOrders();
     } else {
       processNext();
     }
