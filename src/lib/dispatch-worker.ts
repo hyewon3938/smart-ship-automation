@@ -18,6 +18,19 @@ import {
 let pollTimer: ReturnType<typeof setInterval> | null = null;
 let isRunning = false;
 
+/** 운송장 스크래핑 허용 시간대 (KST) */
+const SCRAPE_START_HOUR = 11; // 오전 11시
+const SCRAPE_END_HOUR = 18; // 오후 6시
+
+/** 현재 시간이 스크래핑 허용 시간대인지 확인 */
+function isWithinScrapeWindow(): boolean {
+  const now = new Date();
+  const kstHour = new Date(
+    now.toLocaleString("en-US", { timeZone: "Asia/Seoul" })
+  ).getHours();
+  return kstHour >= SCRAPE_START_HOUR && kstHour < SCRAPE_END_HOUR;
+}
+
 /** 폴링 시작 (앱 초기화 시 호출) */
 export function startDispatchPolling(): void {
   if (pollTimer) return;
@@ -73,8 +86,8 @@ export async function checkAndDispatch(): Promise<CheckAndDispatchResult> {
         .map((g) => g.bookingReservationNo)
         .filter((n): n is string => !!n);
 
-      // 3. 예약번호가 있는 주문만 운송장번호 스크래핑
-      if (reservationNos.length > 0) {
+      // 3. 예약번호가 있는 주문만 운송장번호 스크래핑 (11시~18시만)
+      if (reservationNos.length > 0 && isWithinScrapeWindow()) {
         try {
           const trackingResults = await scrapeTrackingNumbers(reservationNos);
 
