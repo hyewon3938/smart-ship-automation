@@ -37,7 +37,7 @@
 
 ## 시스템 아키텍처
 
-![시스템 아키텍처](docs/images/architecture.png)
+![시스템 아키텍처](docs/images/architecture.svg)
 
 - **로컬**: GS택배 예약 (캡챠가 있어 사람이 보는 headed 브라우저 필요)
 - **서버**: 운송장번호 조회 + 네이버 발송처리 폴링 자동 실행 (headless)
