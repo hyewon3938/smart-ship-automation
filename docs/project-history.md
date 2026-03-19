@@ -234,3 +234,34 @@
 - 국내택배 예약 시 "내일배송 전환" 팝업 자동 처리 ("국내택배로 계속" 클릭)
 - 수령인 이름/주소 특수문자 sanitize (마스킹 * 등)
 - 보내는 분 주소록 "리커밋" 선택 검증 + 재시도 로직
+
+## 2026-03-18~19 — 서버 운송장 스크래핑 안정화 + 동기화 개선
+
+### 운송장 스크래핑 Playwright → HTTP fetch 전환
+- **문제:** 서버 headless Playwright로 GS택배 접속 시 Cloudflare Turnstile 차단
+- **해결:** `scrape-tracking.ts`를 HTTP fetch + Cookie 헤더 방식으로 교체
+- Playwright 없이 `data/cookies.json`의 쿠키로 예약조회 페이지 직접 요청
+- 302 리다이렉트 / "비로그인" 텍스트로 세션 만료 감지
+- HTML 테이블 정규표현식 파싱으로 예약번호 ↔ 운송장번호 매칭
+
+### 운송장 스크래핑 영업시간 제한
+- `isWithinScrapeWindow()`: KST 11시~18시 사이에만 스크래핑 실행
+- 그 외 시간은 폴링은 계속하되 GS택배 HTTP 요청 스킵
+- 밤에 예약해도 불필요한 요청 방지 + 쿠키 낭비 방지
+
+### 로컬 → 서버 주문 데이터 upsert
+- **문제:** 서버 DB에 주문이 없을 때 `booking-result` 동기화가 UPDATE 0건으로 무시됨
+- **해결:** `syncBookingResult`에서 주문 상세 데이터(수령인, 주소, 상품 등) 함께 전송
+- `booking-result` API에서 서버 DB에 주문 없으면 INSERT (upsert 로직)
+- `upsertOrdersFromLocal()`: productOrderId 기준으로 기존 → UPDATE, 신규 → INSERT
+- `resyncBookedOrders()`도 동일 경로로 재동기화 → 동기화 누락 자동 복구
+
+### 기술적 결정
+- HTTP fetch가 Playwright보다 서버 환경에 적합 (Cloudflare 우회, 리소스 절약)
+- 쿠키 유효성은 파일 수정시간 24시간 + 실제 HTTP 응답으로 이중 확인
+- upsert는 서버 DB에 주문이 없어도 로컬 예약만으로 자동 발송처리 가능하게 함
+
+### 이슈/교훈
+- 서버 PM2 로그 시간은 UTC 표시 (02:00 UTC = 11:00 KST) — 혼동 주의
+- GS택배 세션은 24시간보다 짧게 만료될 수 있음 → 예약 직전 로그인 권장
+- Oracle Cloud VM 빌드 5~7분 소요 (메모리 제한)
