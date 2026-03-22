@@ -76,7 +76,7 @@ export function DispatchPanel({ orders, isServerMode = false }: Props) {
     <Card>
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between flex-wrap gap-2">
-          <CardTitle className="text-base">발송처리</CardTitle>
+          <CardTitle className="text-base">발송 대기</CardTitle>
           <div className="flex items-center gap-2">
             <Badge variant={isAutoMode ? "default" : "outline"} className="text-xs">
               {isAutoMode ? "자동 발송" : "수동 승인"}
