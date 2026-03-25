@@ -34,6 +34,12 @@ interface OrderTableProps {
   onGroupStatusChange: (orderId: string, status: OrderStatus) => void;
   /** false로 설정하면 체크박스 컬럼 숨김 (서버 모드) */
   selectable?: boolean;
+  /** 체크박스 선택 가능한 상태 목록 (탭에 따라 다름) */
+  selectableStatuses?: Set<string>;
+  /** 서버 모드에서는 운송장/발송상태 컬럼으로 대체 */
+  isServerMode?: boolean;
+  /** 주문 취소 핸들러 (로컬 모드, booked 주문용) */
+  onCancelOrder?: (orderId: string) => void;
 }
 
 const DELIVERY_TYPE_LABELS: Record<string, string> = {
@@ -42,10 +48,10 @@ const DELIVERY_TYPE_LABELS: Record<string, string> = {
 };
 
 /** 배지로만 표시 (상태 변경 불가 최종 상태) */
-const NON_EDITABLE_BADGE_STATUSES = new Set(["booking", "dispatched", "skipped"]);
+const NON_EDITABLE_BADGE_STATUSES = new Set(["booking", "booked", "dispatched", "skipped"]);
 
-/** 체크박스 선택 가능한 상태 (pending + failed = 재시도 가능) */
-const SELECTABLE_STATUSES = new Set(["pending", "failed"]);
+/** 기본 체크박스 선택 가능 상태 (대기/실패 탭) */
+const DEFAULT_SELECTABLE_STATUSES = new Set(["pending", "failed"]);
 
 function formatPrice(price: number | null | undefined): string {
   if (price == null) return "-";
@@ -64,6 +70,45 @@ function getGroupTotalPrice(orders: Order[]): number {
   return orders.reduce((sum, o) => sum + (o.totalPrice ?? 0), 0);
 }
 
+/** 서버 모드 운송장 정보 표시 */
+function ServerTrackingInfo({ orders }: { orders: Order[] }) {
+  const first = orders[0];
+  const trackingNumber = first.trackingNumber;
+  const dispatchStatus = first.dispatchStatus;
+  const dispatchedAt = first.dispatchedAt;
+
+  if (!trackingNumber) {
+    return (
+      <span className="text-xs text-muted-foreground">운송장 대기 중...</span>
+    );
+  }
+
+  return (
+    <div className="space-y-0.5">
+      <p className="text-xs font-mono text-blue-600 dark:text-blue-400">
+        {trackingNumber}
+      </p>
+      {dispatchStatus === "dispatched" && dispatchedAt && (
+        <p className="text-[10px] text-muted-foreground">
+          발송 {formatShortDate(dispatchedAt)}
+        </p>
+      )}
+      {dispatchStatus === "pending_dispatch" && (
+        <span className="text-[10px] text-amber-600">발송 대기</span>
+      )}
+      {dispatchStatus === "dispatch_failed" && (
+        <span className="text-[10px] text-red-600 font-medium">발송 실패</span>
+      )}
+    </div>
+  );
+}
+
+/** ISO 날짜를 "M/D HH:mm" 형식으로 (짧은 버전) */
+function formatShortDate(iso: string): string {
+  const d = new Date(iso);
+  return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
+
 
 export function OrderTable({
   orders,
@@ -72,6 +117,9 @@ export function OrderTable({
   onGroupDeliveryTypeChange,
   onGroupStatusChange,
   selectable = true,
+  selectableStatuses = DEFAULT_SELECTABLE_STATUSES,
+  isServerMode = false,
+  onCancelOrder,
 }: OrderTableProps) {
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [logDialogOrderId, setLogDialogOrderId] = useState<number | null>(null);
@@ -80,7 +128,7 @@ export function OrderTable({
   const groups = useMemo(() => groupOrdersByOrderId(orders), [orders]);
 
   // 전체 선택 로직 (pending 또는 failed 주문 = 예약 가능 대상)
-  const selectableOrders = orders.filter((o) => SELECTABLE_STATUSES.has(o.status));
+  const selectableOrders = orders.filter((o) => selectableStatuses.has(o.status));
   const allSelectableSelected =
     selectableOrders.length > 0 &&
     selectableOrders.every((o) => selectedIds.has(o.id));
@@ -109,7 +157,7 @@ export function OrderTable({
 
   function handleGroupCheckChange(group: OrderGroup, checked: boolean) {
     const selectableIds = group.orders
-      .filter((o) => SELECTABLE_STATUSES.has(o.status))
+      .filter((o) => selectableStatuses.has(o.status))
       .map((o) => o.id);
 
     const next = new Set(selectedIds);
@@ -144,8 +192,8 @@ export function OrderTable({
               <TableHead className="w-10">
                 <Checkbox
                   checked={allSelectableSelected}
-                  indeterminate={someSelectableSelected}
-                  onCheckedChange={handleSelectAll}
+                  indeterminate={!allSelectableSelected && someSelectableSelected}
+                  onCheckedChange={(checked: boolean) => handleSelectAll(checked)}
                   disabled={selectableOrders.length === 0}
                   aria-label="전체 선택"
                 />
@@ -154,17 +202,27 @@ export function OrderTable({
             <TableHead className="w-8" />
             <TableHead className="w-24 min-w-[96px]">수령인</TableHead>
             <TableHead>배송지</TableHead>
-            <TableHead className="w-28">택배유형</TableHead>
-            <TableHead className="w-20">내일배송</TableHead>
-            <TableHead className="w-28 text-right">상품/금액</TableHead>
-            <TableHead className="w-24">상태</TableHead>
+            {isServerMode ? (
+              <>
+                <TableHead className="w-36">운송장</TableHead>
+                <TableHead className="w-28 text-right">상품/금액</TableHead>
+                <TableHead className="w-24">상태</TableHead>
+              </>
+            ) : (
+              <>
+                <TableHead className="w-28">택배유형</TableHead>
+                <TableHead className="w-20">내일배송</TableHead>
+                <TableHead className="w-28 text-right">상품/금액</TableHead>
+                <TableHead className="w-24">상태</TableHead>
+              </>
+            )}
           </TableRow>
         </TableHeader>
         <TableBody>
           {groups.map((group) => {
             const isExpanded = expandedGroups.has(group.orderId);
             const selectableInGroup = group.orders.filter(
-              (o) => SELECTABLE_STATUSES.has(o.status)
+              (o) => selectableStatuses.has(o.status)
             );
             const allGroupPendingSelected =
               selectableInGroup.length > 0 &&
@@ -184,6 +242,8 @@ export function OrderTable({
                 hasSelectable={selectableInGroup.length > 0}
                 fullAddress={fullAddress}
                 selectable={selectable}
+                selectableStatuses={selectableStatuses}
+                isServerMode={isServerMode}
                 onToggle={() => handleToggleGroup(group.orderId)}
                 onGroupCheck={(checked) =>
                   handleGroupCheckChange(group, checked)
@@ -191,6 +251,7 @@ export function OrderTable({
                 onGroupDeliveryTypeChange={onGroupDeliveryTypeChange}
                 onGroupStatusChange={onGroupStatusChange}
                 onViewLogs={handleViewLogs}
+                onCancelOrder={onCancelOrder}
               />
             );
           })}
@@ -216,11 +277,14 @@ interface GroupRowsProps {
   hasSelectable: boolean;
   fullAddress: string;
   selectable: boolean;
+  selectableStatuses: Set<string>;
+  isServerMode: boolean;
   onToggle: () => void;
   onGroupCheck: (checked: boolean) => void;
   onGroupDeliveryTypeChange: (orderId: string, type: DeliveryType) => void;
   onGroupStatusChange: (orderId: string, status: OrderStatus) => void;
   onViewLogs: (firstDbId: number, naverOrderId: string) => void;
+  onCancelOrder?: (orderId: string) => void;
 }
 
 /** 그룹 내 배송 추적 상태 (네이버 API 기반, 가장 진행된 상태 반환) */
@@ -253,18 +317,21 @@ function GroupRows({
   hasSelectable,
   fullAddress,
   selectable,
+  selectableStatuses,
+  isServerMode,
   onToggle,
   onGroupCheck,
   onGroupDeliveryTypeChange,
   onGroupStatusChange,
   onViewLogs,
+  onCancelOrder,
 }: GroupRowsProps) {
   const groupStatus = getGroupStatus(group.orders);
   const groupDeliveryType = getGroupDeliveryType(group.orders);
   const totalPrice = getGroupTotalPrice(group.orders);
   const groupDeliveryStatus = getGroupDeliveryStatus(group.orders);
   const groupPickupDate = getGroupPickupDate(group.orders);
-  const isEditable = SELECTABLE_STATUSES.has(groupStatus); // pending or failed
+  const isEditable = selectableStatuses.has(groupStatus); // pending or failed
 
   return (
     <>
@@ -279,8 +346,8 @@ function GroupRows({
           <TableCell onClick={(e) => e.stopPropagation()}>
             <Checkbox
               checked={allGroupPendingSelected}
-              indeterminate={someGroupPendingSelected}
-              onCheckedChange={onGroupCheck}
+              indeterminate={!allGroupPendingSelected && someGroupPendingSelected}
+              onCheckedChange={(checked: boolean) => onGroupCheck(checked)}
               disabled={!hasSelectable}
               aria-label={`${group.recipientName} 그룹 선택`}
             />
@@ -314,49 +381,57 @@ function GroupRows({
             )}
           </div>
         </TableCell>
-        <TableCell onClick={(e) => e.stopPropagation()}>
-          {isEditable ? (
-            <Select
-              value={groupDeliveryType}
-              onValueChange={(v) =>
-                onGroupDeliveryTypeChange(group.orderId, v as DeliveryType)
-              }
-            >
-              <SelectTrigger className="w-28 h-7 text-xs">
-                <span data-slot="select-value" className="flex flex-1 text-left">
-                  {DELIVERY_TYPE_LABELS[groupDeliveryType]}
-                </span>
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="domestic" className="text-xs">
-                  국내택배
-                </SelectItem>
-                <SelectItem
-                  value="nextDay"
-                  disabled={!group.isNextDayEligible}
-                  className="text-xs"
+        {isServerMode ? (
+          <TableCell>
+            <ServerTrackingInfo orders={group.orders} />
+          </TableCell>
+        ) : (
+          <>
+            <TableCell onClick={(e) => e.stopPropagation()}>
+              {isEditable ? (
+                <Select
+                  value={groupDeliveryType}
+                  onValueChange={(v) =>
+                    onGroupDeliveryTypeChange(group.orderId, v as DeliveryType)
+                  }
                 >
-                  {group.isNextDayEligible ? "내일배송" : "내일배송 (불가 지역)"}
-                </SelectItem>
-              </SelectContent>
-            </Select>
-          ) : (
-            <span className="text-sm">
-              {DELIVERY_TYPE_LABELS[groupDeliveryType] ?? groupDeliveryType}
-            </span>
-          )}
-        </TableCell>
-        <TableCell>
-          {group.isNextDayEligible ? (
-            <Badge className="bg-green-100 text-green-700 hover:bg-green-100 dark:bg-green-900 dark:text-green-300">
-              가능
-            </Badge>
-          ) : (
-            <Badge className="bg-muted text-muted-foreground hover:bg-muted">
-              불가
-            </Badge>
-          )}
-        </TableCell>
+                  <SelectTrigger className="w-28 h-7 text-xs">
+                    <span data-slot="select-value" className="flex flex-1 text-left">
+                      {DELIVERY_TYPE_LABELS[groupDeliveryType]}
+                    </span>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="domestic" className="text-xs">
+                      국내택배
+                    </SelectItem>
+                    <SelectItem
+                      value="nextDay"
+                      disabled={!group.isNextDayEligible}
+                      className="text-xs"
+                    >
+                      {group.isNextDayEligible ? "내일배송" : "내일배송 (불가 지역)"}
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              ) : (
+                <span className="text-sm">
+                  {DELIVERY_TYPE_LABELS[groupDeliveryType] ?? groupDeliveryType}
+                </span>
+              )}
+            </TableCell>
+            <TableCell>
+              {group.isNextDayEligible ? (
+                <Badge className="bg-green-100 text-green-700 hover:bg-green-100 dark:bg-green-900 dark:text-green-300">
+                  가능
+                </Badge>
+              ) : (
+                <Badge className="bg-muted text-muted-foreground hover:bg-muted">
+                  불가
+                </Badge>
+              )}
+            </TableCell>
+          </>
+        )}
         <TableCell className="text-right">
           <div className="space-y-0.5">
             <p className="text-sm">{group.orders.length}건</p>
@@ -390,15 +465,12 @@ function GroupRows({
             >
               <SelectTrigger className="w-20 h-7 text-xs">
                 <span data-slot="select-value" className="flex flex-1 text-left">
-                  {groupStatus === "pending" ? "대기" : groupStatus === "booked" ? "완료" : "실패"}
+                  {groupStatus === "pending" ? "대기" : "실패"}
                 </span>
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="pending" className="text-xs">
                   대기
-                </SelectItem>
-                <SelectItem value="booked" className="text-xs">
-                  완료
                 </SelectItem>
                 <SelectItem value="failed" className="text-xs">
                   실패
@@ -422,14 +494,14 @@ function GroupRows({
 
       {/* 펼친 상태 — 상품 리스트 */}
       {isExpanded &&
-        group.orders.map((order) => (
+        group.orders.map((order, idx) => (
             <TableRow
               key={order.id}
-              className="border-0 bg-muted/10"
+              className={`bg-muted/10 ${idx < group.orders.length - 1 ? "border-0" : ""}`}
             >
               {selectable && <TableCell />}
               <TableCell />
-              <TableCell colSpan={3}>
+              <TableCell colSpan={isServerMode ? 2 : 3}>
                 <div className="space-y-0.5 pl-2">
                   <p className="text-sm leading-snug">{order.productName}</p>
                   {order.optionInfo && (
@@ -439,7 +511,7 @@ function GroupRows({
                   )}
                 </div>
               </TableCell>
-              <TableCell />
+              {!isServerMode && <TableCell />}
               <TableCell className="text-right text-sm">
                 {order.quantity} × {formatPrice(order.totalPrice)}
               </TableCell>

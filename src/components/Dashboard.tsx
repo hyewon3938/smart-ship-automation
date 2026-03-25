@@ -6,80 +6,111 @@ import { toast } from "sonner";
 import { useEffect, useRef } from "react";
 
 import { BookingConfirmDialog } from "@/components/BookingConfirmDialog";
-import { DispatchPanel } from "@/components/DispatchPanel";
 import { OrderTable } from "@/components/OrderTable";
 import { OrderTableSkeleton } from "@/components/OrderTableSkeleton";
 import { StatusFilter } from "@/components/StatusFilter";
+import type { ServerFilterKey } from "@/components/StatusFilter";
 import { SyncButton } from "@/components/SyncButton";
 import { Button } from "@/components/ui/button";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   useBookOrders,
+  useCancelOrder,
   useOrders,
   useSyncOrders,
   useUpdateGroupDeliveryType,
   useUpdateGroupStatus,
 } from "@/hooks/useOrders";
 
-import { countGroupsByStatus, groupOrdersByOrderId } from "@/lib/groupOrders";
+import { countGroupsByStatus, countServerGroups, groupOrdersByOrderId } from "@/lib/groupOrders";
 
 import type { DeliveryType, OrderStatus } from "@/types";
 
 const isServerMode = process.env.NEXT_PUBLIC_DEPLOY_MODE === "server";
 
+/** 탭별 체크박스 선택 가능 상태 */
+const SELECTABLE_PENDING = new Set(["pending", "failed"]);
+const SELECTABLE_BOOKED = new Set(["booked"]);
+
+/** 서버 모드 필터 → API 파라미터 매핑 */
+function getServerApiParams(filter: ServerFilterKey): {
+  status: string;
+  dispatchFilter?: string;
+} {
+  switch (filter) {
+    case "waiting":
+      return { status: "booked", dispatchFilter: "pending" };
+    case "dispatched":
+      return { status: "dispatched" };
+    case "dispatch_failed":
+      return { status: "booked", dispatchFilter: "dispatch_failed" };
+  }
+}
+
 export function Dashboard() {
-  const [statusFilter, setStatusFilter] = useState<OrderStatus | undefined>(
-    "pending"
-  );
+  // 로컬 모드 필터
+  const [localFilter, setLocalFilter] = useState<OrderStatus | undefined>("pending");
+  // 서버 모드 필터
+  const [serverFilter, setServerFilter] = useState<ServerFilterKey>("waiting");
+
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [isBookingDialogOpen, setIsBookingDialogOpen] = useState(false);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
 
-  // 예약 진행 추적 (2단계):
-  // 1단계(waiting): 예약 시작 → "booking" 상태가 나타날 때까지 대기
-  // 2단계(monitoring): "booking" 확인 → "booking"이 사라지면 완료 탭 전환
+  // 예약 진행 추적 (2단계, 로컬 모드만)
   const bookingPhase = useRef<"idle" | "waiting" | "monitoring">("idle");
   const queryClient = useQueryClient();
 
-  const { data, isLoading, isError } = useOrders(statusFilter);
+  // 서버 모드: 필터에 따라 status + dispatchFilter 파라미터 생성
+  const serverApiParams = isServerMode ? getServerApiParams(serverFilter) : null;
+
+  // 데이터 조회 — 서버/로컬 모드별 다른 파라미터
+  const { data, isLoading, isError } = useOrders(
+    isServerMode ? serverApiParams!.status : localFilter,
+    isServerMode ? serverApiParams!.dispatchFilter : undefined,
+  );
+
   const syncMutation = useSyncOrders();
+  const cancelMutation = useCancelOrder();
   const updateGroupStatusMutation = useUpdateGroupStatus();
   const updateGroupDeliveryTypeMutation = useUpdateGroupDeliveryType();
   const bookMutation = useBookOrders();
 
-  // GS택배 쿠키 유효성 확인 (만료 시 로그인 배너 표시)
+  // GS택배 쿠키 유효성 확인 (로컬 모드만)
   const cookieStatusQuery = useQuery({
     queryKey: ["gs-login-status"],
     queryFn: async () => {
       const res = await fetch("/api/gs-login/status");
       return res.json() as Promise<{ valid: boolean; lastSyncAt: string | null }>;
     },
-    refetchInterval: 60_000, // 1분마다 재확인
+    refetchInterval: 60_000,
+    enabled: !isServerMode,
   });
   const isCookieExpired = cookieStatusQuery.data?.valid === false;
 
   const orders = data?.orders ?? [];
   const lastSyncTime = data?.lastSyncTime ?? null;
 
-  // 전체 주문(필터 무관)을 기반으로 상태별 카운트 계산
+  // 전체 주문(필터 무관)을 기반으로 카운트 계산
   const allOrdersQuery = useOrders(undefined);
   const allOrders = allOrdersQuery.data?.orders ?? [];
 
-  // 주문(orderId) 그룹 기준 상태별 카운트 — 화면에 보이는 숫자는 모두 주문 단위
-  const statusCounts = countGroupsByStatus(allOrders);
+  // 모드별 카운트
+  const localStatusCounts = !isServerMode ? countGroupsByStatus(allOrders) : null;
+  const serverStatusCounts = isServerMode ? countServerGroups(allOrders) : null;
 
   const selectedOrders = orders.filter((o) => selectedIds.has(o.id));
   const selectedGroups = groupOrdersByOrderId(selectedOrders);
 
-  // 예약 완료 감지 → 완료 탭으로 자동 이동 (2단계)
+  // 예약 완료 감지 → 완료 탭으로 자동 이동 (로컬 모드만)
   useEffect(() => {
+    if (isServerMode) return;
     if (bookingPhase.current === "idle") return;
     if (allOrders.length === 0) return;
 
     const hasBooking = allOrders.some((o) => o.status === "booking");
 
     if (bookingPhase.current === "waiting") {
-      // 1단계: "booking" 상태가 데이터에 나타날 때까지 대기
       if (hasBooking) {
         bookingPhase.current = "monitoring";
       }
@@ -87,19 +118,22 @@ export function Dashboard() {
     }
 
     if (bookingPhase.current === "monitoring") {
-      // 2단계: "booking"이 모두 사라지면 → 완료
       if (!hasBooking) {
         bookingPhase.current = "idle";
         queryClient.invalidateQueries({ queryKey: ["orders"] });
-        setStatusFilter("booked");
+        setLocalFilter("booked");
         toast.success("예약이 모두 완료되었습니다");
       }
     }
   }, [allOrders, queryClient]);
 
-  function handleStatusFilterChange(status: OrderStatus | undefined) {
-    setStatusFilter(status);
-    setSelectedIds(new Set()); // 필터 변경 시 선택 초기화
+  function handleLocalFilterChange(status: OrderStatus | undefined) {
+    setLocalFilter(status);
+    setSelectedIds(new Set());
+  }
+
+  function handleServerFilterChange(filter: ServerFilterKey) {
+    setServerFilter(filter);
   }
 
   function handleSync() {
@@ -132,6 +166,17 @@ export function Dashboard() {
     } finally {
       setIsLoggingIn(false);
     }
+  }
+
+  function handleCancelOrder(orderId: string) {
+    cancelMutation.mutate(orderId, {
+      onSuccess: () => {
+        toast.success("주문이 취소되었습니다");
+      },
+      onError: (error) => {
+        toast.error(`취소 실패: ${error.message}`);
+      },
+    });
   }
 
   function handleGroupDeliveryTypeChange(
@@ -173,9 +218,8 @@ export function Dashboard() {
         toast.success(result.message);
         setSelectedIds(new Set());
         setIsBookingDialogOpen(false);
-        // 예약 완료 → 예약완료 탭으로 이동 + 데이터 갱신
         void queryClient.invalidateQueries({ queryKey: ["orders"] });
-        setStatusFilter("booked");
+        setLocalFilter("booked");
       },
       onError: (error) => {
         toast.error(`예약 실패: ${error.message}`);
@@ -190,7 +234,9 @@ export function Dashboard() {
         <div>
           <h1 className="text-2xl font-bold">Smart Ship Automation</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            네이버 스마트스토어 주문 → GS택배 자동 예약
+            {isServerMode
+              ? "발송 대기 → 자동 발송처리"
+              : "네이버 스마트스토어 주문 → GS택배 자동 예약"}
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -243,13 +289,22 @@ export function Dashboard() {
         </div>
       )}
 
-      {/* 상태 필터 */}
-      <StatusFilter
-        currentStatus={statusFilter}
-        counts={statusCounts}
-        onStatusChange={handleStatusFilterChange}
-        isServerMode={isServerMode}
-      />
+      {/* 상태 필터 — 서버/로컬 완전 분리 */}
+      {isServerMode ? (
+        <StatusFilter
+          currentStatus={serverFilter}
+          counts={serverStatusCounts!}
+          onStatusChange={handleServerFilterChange}
+          isServerMode={true}
+        />
+      ) : (
+        <StatusFilter
+          currentStatus={localFilter}
+          counts={localStatusCounts!}
+          onStatusChange={handleLocalFilterChange}
+          isServerMode={false}
+        />
+      )}
 
       {/* 주문 테이블 */}
       {isLoading ? (
@@ -258,10 +313,12 @@ export function Dashboard() {
         <div className="border rounded-lg p-12 text-center text-destructive text-sm">
           주문 목록을 불러올 수 없습니다. 페이지를 새로고침해주세요.
         </div>
-      ) : orders.length === 0 && !lastSyncTime ? (
+      ) : orders.length === 0 ? (
         <div className="border rounded-lg p-12 text-center text-muted-foreground text-sm space-y-2">
-          <p>주문 데이터가 없습니다.</p>
-          <p>동기화 버튼을 눌러 네이버 스마트스토어 주문을 가져오세요.</p>
+          <p>{isServerMode ? "해당 상태의 주문이 없습니다." : "주문 데이터가 없습니다."}</p>
+          {!isServerMode && !lastSyncTime && (
+            <p>동기화 버튼을 눌러 네이버 스마트스토어 주문을 가져오세요.</p>
+          )}
         </div>
       ) : (
         <OrderTable
@@ -271,6 +328,9 @@ export function Dashboard() {
           onGroupDeliveryTypeChange={handleGroupDeliveryTypeChange}
           onGroupStatusChange={handleGroupStatusChange}
           selectable={!isServerMode}
+          selectableStatuses={localFilter === "booked" ? SELECTABLE_BOOKED : SELECTABLE_PENDING}
+          isServerMode={isServerMode}
+          onCancelOrder={!isServerMode ? handleCancelOrder : undefined}
         />
       )}
 
@@ -284,21 +344,38 @@ export function Dashboard() {
                 <span className="ml-1 text-xs">({selectedIds.size}개 상품)</span>
               </span>
             ) : (
-              `대기 ${statusCounts.pending}건`
+              localFilter === "booked"
+                ? `예약완료 ${localStatusCounts!.booked}건`
+                : `대기 ${localStatusCounts!.pending}건`
             )}
           </span>
-          <Button
-            size="sm"
-            disabled={selectedIds.size === 0 || bookMutation.isPending}
-            onClick={() => handleOpenBookingDialog()}
-          >
-            선택 건 예약 ({selectedGroups.length}건)
-          </Button>
+          {localFilter === "booked" ? (
+            <Button
+              size="sm"
+              variant="destructive"
+              disabled={selectedIds.size === 0 || cancelMutation.isPending}
+              onClick={() => {
+                if (window.confirm(`선택한 ${selectedGroups.length}건을 취소하시겠습니까?`)) {
+                  for (const group of selectedGroups) {
+                    handleCancelOrder(group.orderId);
+                  }
+                  setSelectedIds(new Set());
+                }
+              }}
+            >
+              선택 건 취소 ({selectedGroups.length}건)
+            </Button>
+          ) : (
+            <Button
+              size="sm"
+              disabled={selectedIds.size === 0 || bookMutation.isPending}
+              onClick={() => handleOpenBookingDialog()}
+            >
+              선택 건 예약 ({selectedGroups.length}건)
+            </Button>
+          )}
         </div>
       )}
-
-      {/* 발송처리 패널 (booked 주문이 있을 때 표시 — 로컬: 취소 기능, 서버: 발송 처리) */}
-      <DispatchPanel orders={allOrders} isServerMode={isServerMode} />
 
       {/* 예약 확인 다이얼로그 (로컬 모드만) */}
       {!isServerMode && <BookingConfirmDialog
