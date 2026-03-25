@@ -7,7 +7,8 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = request.nextUrl;
     const status = searchParams.get("status") ?? undefined;
-    const orderList = getOrders(status);
+    const dispatchFilter = searchParams.get("dispatchFilter") ?? undefined;
+    const orderList = getOrders(status, dispatchFilter);
     const lastSyncTime = getSetting("lastSyncTime");
 
     return NextResponse.json({ orders: orderList, lastSyncTime });

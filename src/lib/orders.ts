@@ -1,13 +1,46 @@
-import { desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, or } from "drizzle-orm";
 
 import { db } from "@/lib/db";
 import { bookingLogs, orders } from "@/lib/db/schema";
 
 import type { BookingLogEntry, DeliveryTrackingStatus, DeliveryType, DispatchStatus, OrderStatus } from "@/types";
 
-/** 전체 주문 목록 조회 (최신순) */
-export function getOrders(status?: string) {
+/**
+ * 주문 목록 조회 (최신순).
+ * @param status - OrderStatus 필터 (없으면 전체)
+ * @param dispatchFilter - 서버 대시보드용 발송상태 세분화
+ *   "pending"        → booked 중 dispatch_failed 제외 (운송장 대기 + 발송 대기)
+ *   "dispatch_failed" → booked 중 dispatch_failed만
+ */
+export function getOrders(status?: string, dispatchFilter?: string) {
   const query = db.select().from(orders).orderBy(desc(orders.createdAt));
+
+  if (status && dispatchFilter === "pending") {
+    // booked & (dispatch_status IS NULL OR dispatch_status = 'pending_dispatch')
+    return query
+      .where(
+        and(
+          eq(orders.status, status as OrderStatus),
+          or(
+            isNull(orders.dispatchStatus),
+            eq(orders.dispatchStatus, "pending_dispatch" as DispatchStatus),
+          ),
+        ),
+      )
+      .all();
+  }
+
+  if (status && dispatchFilter === "dispatch_failed") {
+    // booked & dispatch_status = 'dispatch_failed'
+    return query
+      .where(
+        and(
+          eq(orders.status, status as OrderStatus),
+          eq(orders.dispatchStatus, "dispatch_failed" as DispatchStatus),
+        ),
+      )
+      .all();
+  }
 
   if (status) {
     return query.where(eq(orders.status, status as OrderStatus)).all();

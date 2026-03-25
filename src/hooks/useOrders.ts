@@ -5,12 +5,15 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { BookingLogEntry, DeliveryType, OrdersResponse, SyncResult } from "@/types";
 
 /** 주문 목록 조회 + booking 상태 시 3초 폴링 */
-export function useOrders(status?: string) {
+export function useOrders(status?: string, dispatchFilter?: string) {
   return useQuery<OrdersResponse>({
-    queryKey: ["orders", { status }],
+    queryKey: ["orders", { status, dispatchFilter }],
     queryFn: async () => {
-      const params = status ? `?status=${status}` : "";
-      const res = await fetch(`/api/orders${params}`);
+      const searchParams = new URLSearchParams();
+      if (status) searchParams.set("status", status);
+      if (dispatchFilter) searchParams.set("dispatchFilter", dispatchFilter);
+      const qs = searchParams.toString();
+      const res = await fetch(`/api/orders${qs ? `?${qs}` : ""}`);
       if (!res.ok) throw new Error("주문 목록 조회 실패");
       return res.json();
     },

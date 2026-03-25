@@ -1,4 +1,4 @@
-import type { Order, OrderGroup, OrderStatus } from "@/types";
+import type { DispatchStatus, Order, OrderGroup, OrderStatus } from "@/types";
 
 /**
  * 같은 orderId를 가진 주문을 하나의 그룹으로 묶는다.
@@ -84,6 +84,36 @@ export function countGroupsByStatus(orders: Order[]): {
     const status = getGroupStatus(group.orders);
     if (status in counts) {
       counts[status as keyof typeof counts]++;
+    }
+  }
+
+  return counts;
+}
+
+/**
+ * 서버 대시보드용 카운트.
+ * 대기: booked & dispatch_failed 아닌 것 | 발송완료: dispatched | 실패: dispatch_failed
+ */
+export function countServerGroups(orders: Order[]): {
+  waiting: number;
+  dispatched: number;
+  dispatchFailed: number;
+} {
+  const groups = groupOrdersByOrderId(orders);
+  const counts = { waiting: 0, dispatched: 0, dispatchFailed: 0 };
+
+  for (const group of groups) {
+    const status = getGroupStatus(group.orders);
+    if (status === "dispatched") {
+      counts.dispatched++;
+    } else if (status === "booked") {
+      // booked 중 dispatch_failed 여부 판단 (그룹 내 첫 번째 기준)
+      const dispatchStatus = group.orders[0].dispatchStatus as DispatchStatus | null;
+      if (dispatchStatus === "dispatch_failed") {
+        counts.dispatchFailed++;
+      } else {
+        counts.waiting++;
+      }
     }
   }
 
