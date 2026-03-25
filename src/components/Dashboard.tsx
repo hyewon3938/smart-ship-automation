@@ -297,8 +297,8 @@ export function Dashboard() {
         </div>
       )}
 
-      {/* 발송처리 패널 (서버 모드에서만 표시) */}
-      {isServerMode && <DispatchPanel orders={allOrders} isServerMode={isServerMode} />}
+      {/* 발송처리 패널 (booked 주문이 있을 때 표시 — 로컬: 취소 기능, 서버: 발송 처리) */}
+      <DispatchPanel orders={allOrders} isServerMode={isServerMode} />
 
       {/* 예약 확인 다이얼로그 (로컬 모드만) */}
       {!isServerMode && <BookingConfirmDialog

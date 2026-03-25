@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useDispatchOrder, useDispatchSettings, useSyncTracking } from "@/hooks/useDispatch";
+import { useCancelOrder } from "@/hooks/useOrders";
 
 import type { Order } from "@/types";
 
@@ -29,6 +30,7 @@ export function DispatchPanel({ orders, isServerMode = false }: Props) {
   const { data: settingsData } = useDispatchSettings();
   const syncMutation = useSyncTracking();
   const dispatchMutation = useDispatchOrder();
+  const cancelMutation = useCancelOrder();
 
   const bookedOrders = orders.filter((o) => o.status === "booked");
 
@@ -69,6 +71,14 @@ export function DispatchPanel({ orders, isServerMode = false }: Props) {
     dispatchMutation.mutate(orderId, {
       onSuccess: (result) => toast.success(`발송처리 완료: ${result.orderId}`),
       onError: (err) => toast.error(`발송처리 실패: ${err.message}`),
+    });
+  }
+
+  function handleCancel(orderId: string, recipientName: string) {
+    if (!window.confirm(`${recipientName} 주문을 취소하시겠습니까?`)) return;
+    cancelMutation.mutate(orderId, {
+      onSuccess: () => toast.success(`${recipientName} 주문 취소 완료`),
+      onError: (err) => toast.error(`취소 실패: ${err.message}`),
     });
   }
 
@@ -141,7 +151,20 @@ export function DispatchPanel({ orders, isServerMode = false }: Props) {
                     )}
                   </>
                 ) : (
-                  <span className="text-xs text-muted-foreground">운송장 대기 중...</span>
+                  <>
+                    <span className="text-xs text-muted-foreground">운송장 대기 중...</span>
+                    {!isServerMode && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-7 text-xs text-muted-foreground hover:text-red-600"
+                        onClick={() => handleCancel(group.orderId, group.recipientName)}
+                        disabled={cancelMutation.isPending}
+                      >
+                        취소
+                      </Button>
+                    )}
+                  </>
                 )}
               </div>
             </div>

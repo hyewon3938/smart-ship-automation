@@ -79,6 +79,13 @@ export async function POST(request: NextRequest) {
         "error",
         `예약 실패 (로컬 동기화): ${body.error ?? "알 수 없는 오류"}`
       );
+    } else if (body.status === "skipped") {
+      updateOrdersByOrderId(body.orderId, "skipped");
+      addBookingLogByOrderId(
+        body.orderId,
+        "cancel",
+        "주문 취소 (로컬 동기화)"
+      );
     }
 
     console.log(

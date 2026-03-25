@@ -109,6 +109,28 @@ export function useBookingLogs(orderId: number | null) {
   });
 }
 
+/** 주문 그룹 취소 (skipped 처리 + 서버 동기화) */
+export function useCancelOrder() {
+  const queryClient = useQueryClient();
+  return useMutation<{ success: boolean; orderId: string }, Error, string>({
+    mutationFn: async (orderId) => {
+      const res = await fetch("/api/orders/cancel", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderId }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "취소 실패");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["orders"] });
+    },
+  });
+}
+
 /** 선택 주문 예약 */
 export function useBookOrders() {
   const queryClient = useQueryClient();

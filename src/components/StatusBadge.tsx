@@ -26,9 +26,9 @@ const STATUS_CONFIG: Record<
       "bg-red-100 text-red-700 hover:bg-red-100 dark:bg-red-900 dark:text-red-300",
   },
   skipped: {
-    label: "건너뜀",
+    label: "취소됨",
     className:
-      "border border-muted-foreground/30 text-muted-foreground bg-transparent hover:bg-transparent",
+      "bg-orange-100 text-orange-700 hover:bg-orange-100 dark:bg-orange-900 dark:text-orange-300",
   },
   dispatched: {
     label: "발송완료",

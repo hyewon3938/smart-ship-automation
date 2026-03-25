@@ -68,11 +68,16 @@ async function postToServer(endpoint: string, data: unknown): Promise<boolean> {
 /** GS택배 예약 결과를 서버 DB에 동기화 (주문 데이터 포함 — 서버에 없으면 INSERT) */
 export async function syncBookingResult(data: {
   orderId: string;
-  status: "booked" | "failed";
+  status: "booked" | "failed" | "skipped";
   bookingResult?: string;
   bookingReservationNo?: string;
   error?: string;
 }): Promise<boolean> {
+  // skipped(취소)는 orderItems 없이 단순 동기화
+  if (data.status === "skipped") {
+    return postToServer("/api/internal/booking-result", data);
+  }
+
   // booked 성공 시 주문 상세 데이터도 함께 전송 (서버 DB에 없을 경우 INSERT용)
   if (data.status === "booked") {
     try {

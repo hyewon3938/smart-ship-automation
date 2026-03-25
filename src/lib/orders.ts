@@ -108,7 +108,7 @@ export function updateGroupStatus(
   orderId: string,
   status: OrderStatus
 ): void {
-  const allowedStatuses = new Set(["pending", "booked", "failed"]);
+  const allowedStatuses = new Set(["pending", "booked", "failed", "skipped"]);
   if (!allowedStatuses.has(status)) {
     throw new Error(`허용되지 않은 상태입니다: ${status}`);
   }
