@@ -1,6 +1,7 @@
 import { closeBrowser, newPage } from "./browser";
 import { ensureLoggedIn, LoginError } from "./auth";
 import { bookDomestic, bookNextDay } from "./automation";
+import { bookVisitPickup } from "./visit-pickup";
 
 import {
   addBookingLog,
@@ -9,7 +10,7 @@ import {
 } from "@/lib/orders";
 import { resyncBookedOrders, syncBookingResult } from "@/lib/sync-to-server";
 
-import type { BookingTask } from "./types";
+import type { BookingTask, VisitPickupTask } from "./types";
 
 // ── 큐 상태 ──
 const queue: BookingTask[] = [];
@@ -216,4 +217,59 @@ export function getWorkerStatus(): {
   queueLength: number;
 } {
   return { isProcessing, queueLength: queue.length };
+}
+
+/**
+ * 방문택배 다량 접수 처리.
+ * 일반 예약과 달리:
+ * - 재시도 없음 (폼 채우기만 함)
+ * - 페이지를 닫지 않음 (사용자가 직접 확인 + 예약)
+ * - 실패 시 전체 주문을 pending으로 복구
+ */
+export async function enqueueVisitPickup(task: VisitPickupTask): Promise<void> {
+  initOnce();
+
+  const logId = task.allOrderDbIds[0];
+  addBookingLog(
+    logId,
+    "start",
+    `방문택배 다량 접수 시작: ${task.recipients.length}명 수령인`
+  );
+  console.log(
+    `[worker] 방문택배 시작 — ${task.recipients.length}명 수령인, ${task.allOrderDbIds.length}개 상품`
+  );
+
+  const page = await newPage();
+  try {
+    await ensureLoggedIn(page);
+    addBookingLog(logId, "login", "로그인 확인 완료");
+    console.log("[worker] 로그인 확인 완료 ✓");
+
+    console.log("[worker] 방문택배 폼 자동화 시작");
+    const result = await bookVisitPickup(page, task);
+
+    if (result.success) {
+      addBookingLog(
+        logId,
+        "complete",
+        `방문택배 폼 입력 완료: ${task.recipients.length}명 수령인 — 브라우저에서 예약하기를 클릭해주세요`
+      );
+      console.log(
+        `[worker] ✅ 방문택배 폼 입력 완료 — 브라우저에서 확인 후 예약하기를 클릭해주세요`
+      );
+      // 페이지를 닫지 않음 — 사용자가 직접 확인하고 예약
+    } else {
+      updateOrderStatusBatch(task.allOrderDbIds, "failed", result.error);
+      addBookingLog(logId, "error", `방문택배 실패: ${result.error}`, result.screenshotPath);
+      console.error(`[worker] ❌ 방문택배 실패: ${result.error}`);
+      await page.close().catch(() => {});
+    }
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : "알 수 없는 오류";
+    updateOrderStatusBatch(task.allOrderDbIds, "failed", msg);
+    addBookingLog(logId, "error", `방문택배 실패: ${msg}`);
+    console.error(`[worker] ❌ 방문택배 실패: ${msg}`);
+    await page.close().catch(() => {});
+    await closeBrowser();
+  }
 }
