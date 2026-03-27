@@ -311,7 +311,7 @@ export function Dashboard() {
               size="sm"
               variant="outline"
               disabled={
-                selectedGroups.length < 3 ||
+                selectedGroups.length < 2 ||
                 visitPickupMutation.isPending ||
                 bookMutation.isPending
               }

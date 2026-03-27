@@ -24,7 +24,7 @@ interface VisitPickupConfirmDialogProps {
 }
 
 const MAX_PREVIEW_GROUPS = 8;
-const MIN_VISIT_PICKUP_COUNT = 3;
+const MIN_VISIT_PICKUP_COUNT = 2;
 
 export function VisitPickupConfirmDialog({
   open,

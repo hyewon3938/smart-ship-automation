@@ -6,7 +6,7 @@ import { enqueueVisitPickup } from "@/lib/gs-delivery/worker";
 
 import type { VisitPickupRecipient, VisitPickupTask } from "@/lib/gs-delivery/types";
 
-const MIN_VISIT_PICKUP_COUNT = 3;
+const MIN_VISIT_PICKUP_COUNT = 2;
 
 export async function POST(request: NextRequest) {
   try {
