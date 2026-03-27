@@ -130,3 +130,29 @@ export function useBookOrders() {
     },
   });
 }
+
+/** 방문택배 다량 접수 */
+export function useBookVisitPickup() {
+  const queryClient = useQueryClient();
+  return useMutation<
+    { message: string; groupCount: number; productCount: number },
+    Error,
+    number[]
+  >({
+    mutationFn: async (orderIds) => {
+      const res = await fetch("/api/orders/book-visit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderIds }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "방문택배 예약 실패");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["orders"] });
+    },
+  });
+}
