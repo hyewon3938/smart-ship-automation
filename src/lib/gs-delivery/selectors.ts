@@ -10,6 +10,7 @@ export const GS_URLS = {
   LOGIN: "https://www.cvsnet.co.kr/member/login/index.do",
   DOMESTIC: "https://www.cvsnet.co.kr/reservation-inquiry/domestic/index.do",
   NEXT_DAY: "https://www.cvsnet.co.kr/reservation-inquiry/nextDay/nextIndex.do",
+  VISIT_PICKUP: "https://www.cvsnet.co.kr/reservation-inquiry/visit/contentsid/400/index.do",
   RESERVATION_LIST: "https://www.cvsnet.co.kr/my-page/reservation/list.do",
 } as const;
 
@@ -92,6 +93,15 @@ export const DOMESTIC_SELECTORS = {
 // 국내택배와 동일 구조. URL만 다름.
 export const NEXT_DAY_SELECTORS = {
   ...DOMESTIC_SELECTORS,
+} as const;
+
+// ── 방문택배 예약 폼 ──
+// 다량 접수: 1 예약 = N명 수령인
+export const VISIT_PICKUP_SELECTORS = {
+  /** 받는 분 추가 버튼 (첫 번째 → 두 번째, 타이틀 옆 + 아이콘) */
+  RECEIVER_ADD_BTN: "#btn_receiver_add",
+  /** 받는 분 추가 버튼 (세 번째 이후, 각 수령인 폼 하단) */
+  RECEIVER_PLUS_BTN: ".btn_receiver_plus",
 } as const;
 
 // ── 타이밍 상수 ──

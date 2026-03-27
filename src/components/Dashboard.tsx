@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { useEffect, useRef } from "react";
 
 import { BookingConfirmDialog } from "@/components/BookingConfirmDialog";
+import { VisitPickupConfirmDialog } from "@/components/VisitPickupConfirmDialog";
 import { DispatchPanel } from "@/components/DispatchPanel";
 import { OrderTable } from "@/components/OrderTable";
 import { OrderTableSkeleton } from "@/components/OrderTableSkeleton";
@@ -15,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   useBookOrders,
+  useBookVisitPickup,
   useOrders,
   useSyncOrders,
   useUpdateGroupDeliveryType,
@@ -33,6 +35,7 @@ export function Dashboard() {
   );
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [isBookingDialogOpen, setIsBookingDialogOpen] = useState(false);
+  const [isVisitPickupDialogOpen, setIsVisitPickupDialogOpen] = useState(false);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
 
   // 예약 진행 추적 (2단계):
@@ -46,6 +49,7 @@ export function Dashboard() {
   const updateGroupStatusMutation = useUpdateGroupStatus();
   const updateGroupDeliveryTypeMutation = useUpdateGroupDeliveryType();
   const bookMutation = useBookOrders();
+  const visitPickupMutation = useBookVisitPickup();
 
   // GS택배 쿠키 유효성 확인 (만료 시 로그인 배너 표시)
   const cookieStatusQuery = useQuery({
@@ -183,6 +187,21 @@ export function Dashboard() {
     });
   }
 
+  function handleVisitPickupConfirm() {
+    const ids = Array.from(selectedIds);
+    visitPickupMutation.mutate(ids, {
+      onSuccess: (result) => {
+        toast.success(result.message);
+        setSelectedIds(new Set());
+        setIsVisitPickupDialogOpen(false);
+        void queryClient.invalidateQueries({ queryKey: ["orders"] });
+      },
+      onError: (error) => {
+        toast.error(`방문택배 실패: ${error.message}`);
+      },
+    });
+  }
+
   return (
     <div className="space-y-6">
       {/* 헤더 */}
@@ -287,13 +306,27 @@ export function Dashboard() {
               `대기 ${statusCounts.pending}건`
             )}
           </span>
-          <Button
-            size="sm"
-            disabled={selectedIds.size === 0 || bookMutation.isPending}
-            onClick={() => handleOpenBookingDialog()}
-          >
-            선택 건 예약 ({selectedGroups.length}건)
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={
+                selectedGroups.length < 2 ||
+                visitPickupMutation.isPending ||
+                bookMutation.isPending
+              }
+              onClick={() => setIsVisitPickupDialogOpen(true)}
+            >
+              방문택배 ({selectedGroups.length}건)
+            </Button>
+            <Button
+              size="sm"
+              disabled={selectedIds.size === 0 || bookMutation.isPending}
+              onClick={() => handleOpenBookingDialog()}
+            >
+              선택 건 예약 ({selectedGroups.length}건)
+            </Button>
+          </div>
         </div>
       )}
 
@@ -307,6 +340,15 @@ export function Dashboard() {
         selectedOrders={selectedOrders}
         isPending={bookMutation.isPending}
         onConfirm={handleBookConfirm}
+      />}
+
+      {/* 방문택배 확인 다이얼로그 (로컬 모드만) */}
+      {!isServerMode && <VisitPickupConfirmDialog
+        open={isVisitPickupDialogOpen}
+        onOpenChange={setIsVisitPickupDialogOpen}
+        selectedOrders={selectedOrders}
+        isPending={visitPickupMutation.isPending}
+        onConfirm={handleVisitPickupConfirm}
       />}
     </div>
   );
