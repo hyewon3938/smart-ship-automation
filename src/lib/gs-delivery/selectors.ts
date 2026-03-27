@@ -10,7 +10,7 @@ export const GS_URLS = {
   LOGIN: "https://www.cvsnet.co.kr/member/login/index.do",
   DOMESTIC: "https://www.cvsnet.co.kr/reservation-inquiry/domestic/index.do",
   NEXT_DAY: "https://www.cvsnet.co.kr/reservation-inquiry/nextDay/nextIndex.do",
-  VISIT_PICKUP: "https://www.cvsnet.co.kr/reservation-inquiry/visit/visitIndex.do",
+  VISIT_PICKUP: "https://www.cvsnet.co.kr/reservation-inquiry/visit/contentsid/400/index.do",
   RESERVATION_LIST: "https://www.cvsnet.co.kr/my-page/reservation/list.do",
 } as const;
 

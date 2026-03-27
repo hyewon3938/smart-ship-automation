@@ -33,7 +33,10 @@ function formatPhone(raw: string): string {
 }
 
 function sanitizeName(name: string): string {
-  return name.replace(/[^\uAC00-\uD7A3a-zA-Z0-9 ]/g, "").trim();
+  // "주문자(수령인)" 형식이면 수령인만 추출
+  const parenMatch = name.match(/\(([^)]+)\)/);
+  const extracted = parenMatch ? parenMatch[1] : name;
+  return extracted.replace(/[^\uAC00-\uD7A3a-zA-Z0-9 ]/g, "").trim();
 }
 
 function sanitizeAddress(addr: string): string {
@@ -52,6 +55,12 @@ export async function bookVisitPickup(
   let currentStep = "";
 
   try {
+    // 알럿(confirm/alert) 자동 수락 핸들러
+    page.on("dialog", async (dialog) => {
+      console.log(`[visit-pickup] 알럿 자동 수락: "${dialog.message()}"`);
+      await dialog.accept();
+    });
+
     // ── 1. 방문택배 페이지 이동 ──
     currentStep = "1. 방문택배 페이지 이동";
     console.log(`[visit-pickup] ${currentStep}: ${GS_URLS.VISIT_PICKUP}`);
@@ -116,26 +125,25 @@ export async function bookVisitPickup(
     }
     console.log(`[visit-pickup] ${currentStep} ✓`);
 
-    // ── 2. "접수 수량 및 운임을 확인 하였습니다." 체크 + "다량 접수" 클릭 ──
-    currentStep = "2. 접수 확인 체크 + 다량 접수 클릭";
+    // ── 2. 체크박스 → 알럿 확인 → "다량 접수" 카드 클릭 ──
+    currentStep = "2. 체크박스 + 다량 접수 클릭";
     console.log(`[visit-pickup] ${currentStep}`);
 
-    // 체크박스 클릭 (텍스트 기반 탐색)
+    // "접수 수량 및 운임을 확인 하였습니다." 체크박스 클릭
     await page.evaluate(() => {
-      // "접수 수량 및 운임을 확인" 텍스트가 포함된 label 또는 근처 체크박스 찾기
-      const allLabels = Array.from(document.querySelectorAll("label")) as HTMLLabelElement[];
-      for (const label of allLabels) {
+      const labels = Array.from(document.querySelectorAll("label")) as HTMLLabelElement[];
+      for (const label of labels) {
         if (label.textContent?.includes("접수 수량 및 운임을 확인")) {
           label.click();
           return "label";
         }
       }
-      // label이 없으면 체크박스 직접 탐색
+      // label이 없으면 체크박스 직접 찾기
       const checkboxes = Array.from(
         document.querySelectorAll("input[type='checkbox']")
       ) as HTMLInputElement[];
       for (const cb of checkboxes) {
-        const parent = cb.closest("div, li, p, span");
+        const parent = cb.closest("div, li, p, span, td");
         if (parent?.textContent?.includes("접수 수량 및 운임을 확인")) {
           cb.checked = true;
           cb.dispatchEvent(new Event("change", { bubbles: true }));
@@ -144,23 +152,11 @@ export async function bookVisitPickup(
       }
       return null;
     });
-    console.log(`[visit-pickup]   접수 확인 체크 ✓`);
+    console.log(`[visit-pickup]   체크박스 클릭 ✓`);
     await page.waitForTimeout(ACTION_DELAY_MS);
 
-    // "다량 접수" 버튼 클릭
-    await page.evaluate(() => {
-      const candidates = Array.from(
-        document.querySelectorAll("a, button, input[type='button'], input[type='submit']")
-      ) as HTMLElement[];
-      for (const el of candidates) {
-        const text = el.textContent?.trim() ?? (el as HTMLInputElement).value ?? "";
-        if (text.includes("다량 접수") && el.offsetParent !== null && el.offsetWidth > 0) {
-          el.click();
-          return text;
-        }
-      }
-      return null;
-    });
+    // div.execution_cjone_2 카드 클릭 → confirm 알럿은 page.on("dialog") 핸들러가 자동 수락
+    await page.locator(".execution_cjone_2").click();
     console.log(`[visit-pickup]   "다량 접수" 클릭 ✓`);
     await page.waitForTimeout(ACTION_DELAY_MS * 3);
 
@@ -318,14 +314,8 @@ export async function bookVisitPickup(
         // 박스 크기: "2kg 이하" + 버튼 → 1개
         await selectBoxSize(page, 0);
       } else if (i === 1) {
-        // 두 번째 수령인: #btn_receiver_add 클릭 → alert 확인
+        // 두 번째 수령인: #btn_receiver_add 클릭 → alert는 전역 핸들러가 자동 수락
         console.log(`[visit-pickup]     #btn_receiver_add 클릭`);
-
-        // dialog(confirm) 자동 수락 설정
-        page.once("dialog", async (dialog) => {
-          console.log(`[visit-pickup]     알럿 확인: "${dialog.message().slice(0, 50)}"`);
-          await dialog.accept();
-        });
 
         await page.locator(VP.RECEIVER_ADD_BTN).click();
         await page.waitForTimeout(ACTION_DELAY_MS * 3);
@@ -622,52 +612,50 @@ async function fillRecipientForm(
  * 박스 크기 선택: "2kg 이하" + 버튼 클릭 → 수량 1개.
  */
 async function selectBoxSize(page: Page, recipientIndex: number): Promise<void> {
+  // 각 수령인별 박스 크기 섹션에서 첫 번째 행(2kg 이하)의 + 버튼 클릭
+  // onclick="visitCtrl.calculateFare(this, 'p')" 패턴의 a 태그
   await page.evaluate((idx) => {
-    // "2kg 이하" 텍스트가 포함된 섹션의 + 버튼 찾기
-    // 방문택배 폼에서 박스 크기 선택 UI:
-    // - 각 크기 옵션 옆에 -, 수량, + 버튼이 있음
-    // - 첫 번째 옵션이 "2kg 이하 / 가로 + 세로 + 높이 합계 80cm 이하"
-
-    // "2kg" 텍스트가 포함된 요소 근처의 + 버튼 찾기
-    const allElements = Array.from(
-      document.querySelectorAll("li, div, tr, td, span, p, label")
+    // 모든 "박스 크기 및 수량" 테이블 찾기 — 각 수령인마다 하나씩 있음
+    const fareInfoSpans = Array.from(
+      document.querySelectorAll("span.fareInfo")
     ) as HTMLElement[];
-    let foundCount = 0;
-    for (const el of allElements) {
-      if (
-        el.children.length === 0 &&
-        el.textContent?.includes("2kg") &&
-        el.offsetParent !== null
-      ) {
-        // 이 요소의 부모/형제에서 + 버튼 찾기
-        const parent = el.closest("li, div, tr, .item, [class*='box']") || el.parentElement;
-        if (!parent) continue;
 
-        // 해당 수령인의 박스인지 확인 (N번째)
-        if (foundCount === idx) {
-          const plusBtns = parent.querySelectorAll(
-            "a[class*='plus'], button[class*='plus'], .plus, .plusBtn, a:has(img[alt*='추가']), a[href*='plus'], .btn_plus"
-          );
-          // 더 넓게 탐색: + 텍스트를 가진 버튼
-          const allBtnsInParent = Array.from(parent.querySelectorAll("a, button")) as HTMLElement[];
-          for (const btn of allBtnsInParent) {
-            if (
-              (btn.textContent?.trim() === "+" || btn.textContent?.trim() === "＋" ||
-               btn.querySelector("img[alt*='추가']") ||
-               btn.classList.contains("plus") || btn.classList.contains("plusBtn")) &&
-              btn.offsetParent !== null
-            ) {
-              btn.click();
-              return;
-            }
-          }
-          // fallback: plusBtns 사용
-          if (plusBtns.length > 0) {
-            (plusBtns[0] as HTMLElement).click();
+    // 수령인별로 그룹화: data-group-id 또는 순서로 구분
+    // 첫 번째 수령인의 첫 번째 fareInfo가 2kg 이하
+    // 각 수령인당 5개 사이즈(2kg, 5kg, 10kg, 15kg, 20kg)
+    const SIZES_PER_RECIPIENT = 5;
+    const targetSpanIndex = idx * SIZES_PER_RECIPIENT; // 각 수령인의 첫 번째(2kg) 스팬
+
+    if (targetSpanIndex < fareInfoSpans.length) {
+      const targetSpan = fareInfoSpans[targetSpanIndex];
+      // 같은 행(tr/td)에 있는 + 버튼 찾기
+      const row = targetSpan.closest("tr") || targetSpan.parentElement;
+      if (row) {
+        const plusBtn = row.querySelector(
+          "a[onclick*=\"calculateFare\"][onclick*=\"'p'\"]"
+        ) as HTMLElement | null;
+        if (plusBtn) {
+          plusBtn.click();
+          return;
+        }
+      }
+    }
+
+    // fallback: idx번째 "2kg" 텍스트 근처의 + 버튼
+    const rows = Array.from(document.querySelectorAll("tr")) as HTMLElement[];
+    let found = 0;
+    for (const row of rows) {
+      if (row.textContent?.includes("2kg") && row.querySelector("a[onclick*=\"calculateFare\"]")) {
+        if (found === idx) {
+          const plusBtn = row.querySelector(
+            "a[onclick*=\"calculateFare\"][onclick*=\"'p'\"]"
+          ) as HTMLElement | null;
+          if (plusBtn) {
+            plusBtn.click();
             return;
           }
         }
-        foundCount++;
+        found++;
       }
     }
   }, recipientIndex);
