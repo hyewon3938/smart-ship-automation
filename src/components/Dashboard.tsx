@@ -17,6 +17,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   useBookOrders,
   useBookVisitPickup,
+  useCancelBooking,
   useOrders,
   useSyncOrders,
   useUpdateGroupDeliveryType,
@@ -50,6 +51,7 @@ export function Dashboard() {
   const updateGroupDeliveryTypeMutation = useUpdateGroupDeliveryType();
   const bookMutation = useBookOrders();
   const visitPickupMutation = useBookVisitPickup();
+  const cancelBookingMutation = useCancelBooking();
 
   // GS택배 쿠키 유효성 확인 (만료 시 로그인 배너 표시)
   const cookieStatusQuery = useQuery({
@@ -164,6 +166,19 @@ export function Dashboard() {
         },
       }
     );
+  }
+
+  function handleCancelBooking() {
+    cancelBookingMutation.mutate(undefined, {
+      onSuccess: () => {
+        toast.success("예약이 취소되었습니다");
+        bookingPhase.current = "idle";
+        setStatusFilter("pending");
+      },
+      onError: (error) => {
+        toast.error(`예약 취소 실패: ${error.message}`);
+      },
+    });
   }
 
   function handleOpenBookingDialog() {
@@ -307,25 +322,38 @@ export function Dashboard() {
             )}
           </span>
           <div className="flex gap-2">
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={
-                selectedGroups.length < 2 ||
-                visitPickupMutation.isPending ||
-                bookMutation.isPending
-              }
-              onClick={() => setIsVisitPickupDialogOpen(true)}
-            >
-              방문택배 ({selectedGroups.length}건)
-            </Button>
-            <Button
-              size="sm"
-              disabled={selectedIds.size === 0 || bookMutation.isPending}
-              onClick={() => handleOpenBookingDialog()}
-            >
-              선택 건 예약 ({selectedGroups.length}건)
-            </Button>
+            {(statusCounts.booking ?? 0) > 0 ? (
+              <Button
+                size="sm"
+                variant="destructive"
+                disabled={cancelBookingMutation.isPending}
+                onClick={handleCancelBooking}
+              >
+                {cancelBookingMutation.isPending ? "취소 중..." : "예약 취소"}
+              </Button>
+            ) : (
+              <>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={
+                    selectedGroups.length < 2 ||
+                    visitPickupMutation.isPending ||
+                    bookMutation.isPending
+                  }
+                  onClick={() => setIsVisitPickupDialogOpen(true)}
+                >
+                  방문택배 ({selectedGroups.length}건)
+                </Button>
+                <Button
+                  size="sm"
+                  disabled={selectedIds.size === 0 || bookMutation.isPending}
+                  onClick={() => handleOpenBookingDialog()}
+                >
+                  선택 건 예약 ({selectedGroups.length}건)
+                </Button>
+              </>
+            )}
           </div>
         </div>
       )}

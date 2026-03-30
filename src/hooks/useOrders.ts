@@ -131,6 +131,24 @@ export function useBookOrders() {
   });
 }
 
+/** 진행 중인 예약 취소 */
+export function useCancelBooking() {
+  const queryClient = useQueryClient();
+  return useMutation<{ success: boolean; recovered: number }>({
+    mutationFn: async () => {
+      const res = await fetch("/api/orders/cancel-booking", { method: "POST" });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "예약 취소 실패");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["orders"] });
+    },
+  });
+}
+
 /** 방문택배 다량 접수 */
 export function useBookVisitPickup() {
   const queryClient = useQueryClient();
