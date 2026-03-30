@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { updateGroupDeliveryType, updateGroupStatus } from "@/lib/orders";
+import { syncBookingResult } from "@/lib/sync-to-server";
 
 export async function PATCH(request: NextRequest) {
   try {
@@ -16,6 +17,15 @@ export async function PATCH(request: NextRequest) {
 
     if (status) {
       updateGroupStatus(orderId, status);
+
+      // 수동 상태 변경도 서버에 동기화
+      if (status === "booked" || status === "failed") {
+        void syncBookingResult({
+          orderId,
+          status,
+          ...(status === "failed" && { error: "수동 상태 변경" }),
+        });
+      }
     }
 
     if (deliveryType) {

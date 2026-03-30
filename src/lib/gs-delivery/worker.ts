@@ -16,6 +16,7 @@ import type { BookingTask, VisitPickupTask } from "./types";
 const queue: BookingTask[] = [];
 let isProcessing = false;
 let initialized = false;
+let cancelRequested = false;
 
 /**
  * 모듈 초기화: "booking" 상태로 멈춘 주문을 "pending"으로 복구.
@@ -58,10 +59,18 @@ async function processNext(): Promise<void> {
   } catch (error) {
     browserCrashed = true;
     const msg = error instanceof Error ? error.message : "알 수 없는 오류";
-    // 그룹 내 모든 상품을 failed로 일괄 변경
-    updateOrderStatusBatch(task.orderDbIds, "failed", msg);
-    addBookingLog(task.orderDbIds[0], "error", `예상치 못한 실패: ${msg}`);
-    console.error(`[worker] ❌ 예약 실패 — 주문: ${task.naverOrderId}, 에러: ${msg}`);
+
+    if (cancelRequested) {
+      // 취소 요청: 현재 건을 pending으로 복구 (failed 아님)
+      updateOrderStatusBatch(task.orderDbIds, "pending");
+      addBookingLog(task.orderDbIds[0], "info", "사용자가 예약을 취소했습니다");
+      console.log(`[worker] 예약 취소 — 주문: ${task.naverOrderId} → pending 복구`);
+    } else {
+      // 일반 크래시: 기존 동작 (failed 처리)
+      updateOrderStatusBatch(task.orderDbIds, "failed", msg);
+      addBookingLog(task.orderDbIds[0], "error", `예상치 못한 실패: ${msg}`);
+      console.error(`[worker] ❌ 예약 실패 — 주문: ${task.naverOrderId}, 에러: ${msg}`);
+    }
 
     await closeBrowser();
   } finally {
@@ -69,6 +78,7 @@ async function processNext(): Promise<void> {
 
     if (browserCrashed) {
       drainQueue();
+      cancelRequested = false;
     } else if (queue.length === 0) {
       // 큐 처리 완료 — 동기화 누락된 booked 주문 재전송
       void resyncBookedOrders();
@@ -211,12 +221,22 @@ function drainQueue(): void {
   queue.length = 0;
 }
 
+/**
+ * 진행 중인 예약을 취소하고 모든 주문을 pending으로 복구.
+ * 브라우저를 닫아 진행 중인 Playwright 작업을 중단시킨다.
+ */
+export async function cancelBooking(): Promise<void> {
+  cancelRequested = true;
+  await closeBrowser();
+}
+
 /** 현재 큐 상태 조회 */
 export function getWorkerStatus(): {
   isProcessing: boolean;
   queueLength: number;
+  cancelRequested: boolean;
 } {
-  return { isProcessing, queueLength: queue.length };
+  return { isProcessing, queueLength: queue.length, cancelRequested };
 }
 
 /**
