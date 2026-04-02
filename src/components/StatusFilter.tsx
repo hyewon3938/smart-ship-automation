@@ -2,7 +2,7 @@
 
 import { Button } from "@/components/ui/button";
 
-import type { OrderStatus } from "@/types";
+import type { OrderStatus, ServerFilter } from "@/types";
 
 interface StatusCount {
   all: number;
@@ -14,24 +14,39 @@ interface StatusCount {
   dispatched: number;
 }
 
+interface ServerStatusCount {
+  all: number;
+  waiting: number;
+  dispatched: number;
+  dispatch_failed: number;
+}
+
 interface StatusFilterProps {
-  currentStatus: OrderStatus | undefined;
-  counts: StatusCount;
-  onStatusChange: (status: OrderStatus | undefined) => void;
-  /** 서버 모드 여부 — false이면 발송완료 탭 숨김 */
+  currentStatus: OrderStatus | ServerFilter | undefined;
+  counts: StatusCount | ServerStatusCount;
+  onStatusChange: (status: OrderStatus | ServerFilter | undefined) => void;
   isServerMode?: boolean;
 }
 
-const TABS: {
+const LOCAL_TABS: {
   key: OrderStatus | undefined;
   label: string;
   countKey: keyof StatusCount;
-  serverOnly?: boolean;
 }[] = [
   { key: "pending", label: "대기", countKey: "pending" },
   { key: "booked", label: "예약완료", countKey: "booked" },
-  { key: "dispatched", label: "발송완료", countKey: "dispatched", serverOnly: true },
   { key: "failed", label: "실패", countKey: "failed" },
+  { key: undefined, label: "전체", countKey: "all" },
+];
+
+const SERVER_TABS: {
+  key: ServerFilter | undefined;
+  label: string;
+  countKey: keyof ServerStatusCount;
+}[] = [
+  { key: "waiting", label: "대기", countKey: "waiting" },
+  { key: "dispatched", label: "발송완료", countKey: "dispatched" },
+  { key: "dispatch_failed", label: "실패", countKey: "dispatch_failed" },
   { key: undefined, label: "전체", countKey: "all" },
 ];
 
@@ -41,13 +56,11 @@ export function StatusFilter({
   onStatusChange,
   isServerMode = false,
 }: StatusFilterProps) {
-  const visibleTabs = isServerMode
-    ? TABS
-    : TABS.filter((tab) => !tab.serverOnly);
+  const tabs = isServerMode ? SERVER_TABS : LOCAL_TABS;
 
   return (
     <div className="flex gap-1 flex-wrap">
-      {visibleTabs.map((tab) => (
+      {tabs.map((tab) => (
         <Button
           key={tab.label}
           variant={currentStatus === tab.key ? "default" : "outline"}
@@ -56,7 +69,7 @@ export function StatusFilter({
         >
           {tab.label}
           <span className="ml-1 text-xs opacity-70">
-            ({counts[tab.countKey]})
+            ({(counts as unknown as Record<string, number>)[tab.countKey]})
           </span>
         </Button>
       ))}

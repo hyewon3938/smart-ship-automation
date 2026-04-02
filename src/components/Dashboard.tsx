@@ -7,7 +7,6 @@ import { useEffect, useRef } from "react";
 
 import { BookingConfirmDialog } from "@/components/BookingConfirmDialog";
 import { VisitPickupConfirmDialog } from "@/components/VisitPickupConfirmDialog";
-import { DispatchPanel } from "@/components/DispatchPanel";
 import { OrderTable } from "@/components/OrderTable";
 import { OrderTableSkeleton } from "@/components/OrderTableSkeleton";
 import { StatusFilter } from "@/components/StatusFilter";
@@ -24,16 +23,17 @@ import {
   useUpdateGroupStatus,
 } from "@/hooks/useOrders";
 
-import { countGroupsByStatus, groupOrdersByOrderId } from "@/lib/groupOrders";
+import { countGroupsByServerFilter, countGroupsByStatus, filterOrdersByServerFilter, groupOrdersByOrderId } from "@/lib/groupOrders";
 
-import type { DeliveryType, OrderStatus } from "@/types";
+import type { DeliveryType, OrderStatus, ServerFilter } from "@/types";
 
 const isServerMode = process.env.NEXT_PUBLIC_DEPLOY_MODE === "server";
 
 export function Dashboard() {
   const [statusFilter, setStatusFilter] = useState<OrderStatus | undefined>(
-    "pending"
+    isServerMode ? undefined : "pending"
   );
+  const [serverFilter, setServerFilter] = useState<ServerFilter | undefined>("waiting");
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [isBookingDialogOpen, setIsBookingDialogOpen] = useState(false);
   const [isVisitPickupDialogOpen, setIsVisitPickupDialogOpen] = useState(false);
@@ -45,7 +45,7 @@ export function Dashboard() {
   const bookingPhase = useRef<"idle" | "waiting" | "monitoring">("idle");
   const queryClient = useQueryClient();
 
-  const { data, isLoading, isError } = useOrders(statusFilter);
+  const { data, isLoading, isError } = useOrders(isServerMode ? undefined : statusFilter);
   const syncMutation = useSyncOrders();
   const updateGroupStatusMutation = useUpdateGroupStatus();
   const updateGroupDeliveryTypeMutation = useUpdateGroupDeliveryType();
@@ -64,15 +64,22 @@ export function Dashboard() {
   });
   const isCookieExpired = cookieStatusQuery.data?.valid === false;
 
-  const orders = data?.orders ?? [];
   const lastSyncTime = data?.lastSyncTime ?? null;
 
   // 전체 주문(필터 무관)을 기반으로 상태별 카운트 계산
+  // 서버 모드: useOrders(undefined)로 전체 조회 후 클라이언트 필터링
+  // 로컬 모드: allOrdersQuery는 카운트용, data는 API 필터링된 목록
   const allOrdersQuery = useOrders(undefined);
   const allOrders = allOrdersQuery.data?.orders ?? [];
 
   // 주문(orderId) 그룹 기준 상태별 카운트 — 화면에 보이는 숫자는 모두 주문 단위
   const statusCounts = countGroupsByStatus(allOrders);
+  const serverStatusCounts = countGroupsByServerFilter(allOrders);
+
+  // 서버 모드: 클라이언트 필터링 / 로컬 모드: API 필터링 결과 사용
+  const orders = isServerMode
+    ? filterOrdersByServerFilter(allOrders, serverFilter)
+    : (data?.orders ?? []);
 
   const selectedOrders = orders.filter((o) => selectedIds.has(o.id));
   const selectedGroups = groupOrdersByOrderId(selectedOrders);
@@ -103,8 +110,8 @@ export function Dashboard() {
     }
   }, [allOrders, queryClient]);
 
-  function handleStatusFilterChange(status: OrderStatus | undefined) {
-    setStatusFilter(status);
+  function handleStatusFilterChange(status: OrderStatus | ServerFilter | undefined) {
+    setStatusFilter(status as OrderStatus | undefined);
     setSelectedIds(new Set()); // 필터 변경 시 선택 초기화
   }
 
@@ -279,9 +286,13 @@ export function Dashboard() {
 
       {/* 상태 필터 */}
       <StatusFilter
-        currentStatus={statusFilter}
-        counts={statusCounts}
-        onStatusChange={handleStatusFilterChange}
+        currentStatus={isServerMode ? serverFilter : statusFilter}
+        counts={isServerMode ? serverStatusCounts : statusCounts}
+        onStatusChange={
+          isServerMode
+            ? (s) => setServerFilter(s as ServerFilter | undefined)
+            : handleStatusFilterChange
+        }
         isServerMode={isServerMode}
       />
 
@@ -357,9 +368,6 @@ export function Dashboard() {
           </div>
         </div>
       )}
-
-      {/* 발송처리 패널 (서버 모드에서만 표시) */}
-      {isServerMode && <DispatchPanel orders={allOrders} isServerMode={isServerMode} />}
 
       {/* 예약 확인 다이얼로그 (로컬 모드만) */}
       {!isServerMode && <BookingConfirmDialog
