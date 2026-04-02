@@ -403,6 +403,11 @@ function GroupRows({
                 <SelectItem value="failed" className="text-xs">
                   실패
                 </SelectItem>
+                {!selectable && groupStatus === "booked" && (
+                  <SelectItem value="dispatched" className="text-xs">
+                    발송완료
+                  </SelectItem>
+                )}
               </SelectContent>
             </Select>
           )}
