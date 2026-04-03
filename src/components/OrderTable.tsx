@@ -381,6 +381,31 @@ function GroupRows({
                 </span>
               )}
             </div>
+          ) : !selectable && groupStatus === "booked" ? (
+            /* 서버 모드 booked: 운송장 상태 + 수동 발송완료 */
+            <div className="flex flex-col gap-0.5">
+              <span className="text-xs text-muted-foreground">운송장 대기중</span>
+              <Select
+                value={groupStatus}
+                onValueChange={(v) =>
+                  onGroupStatusChange(group.orderId, v as OrderStatus)
+                }
+              >
+                <SelectTrigger className="w-24 h-6 text-[11px]">
+                  <span data-slot="select-value" className="flex flex-1 text-left">
+                    상태 변경
+                  </span>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="dispatched" className="text-xs">
+                    발송완료
+                  </SelectItem>
+                  <SelectItem value="booked" className="text-xs">
+                    예약완료
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           ) : (
             <Select
               value={groupStatus}
@@ -403,11 +428,6 @@ function GroupRows({
                 <SelectItem value="failed" className="text-xs">
                   실패
                 </SelectItem>
-                {!selectable && groupStatus === "booked" && (
-                  <SelectItem value="dispatched" className="text-xs">
-                    발송완료
-                  </SelectItem>
-                )}
               </SelectContent>
             </Select>
           )}
