@@ -280,3 +280,19 @@
 - 페이지 미닫음 (사용자 결제 필요) → 워커에서 `page.close()` 스킵
 - `VisitPickupTask` 타입 신규: `BookingTask`와 구조가 다름 (recipients 배열)
 - 최소 건수 검증을 `bookOrders()` 전에 수행하여 상태 고착 방지
+
+## 2026-04-02 — PR #29: 서버 대시보드 탭 구조 개편 (#28)
+
+### 서버 대시보드 탭 재구성
+- 기존: 대기(pending)/예약완료(booked)/발송완료(dispatched)/실패(failed)/전체
+- 변경: **대기**(운송장 대기 중)/발송완료/실패(발송처리 실패)/전체
+- `DispatchPanel` 제거 — 자동 모드 전용 운영, 수동 재처리 불필요
+- 로컬 탭은 대기/예약완료/실패/전체 유지 (발송완료 서버전용 탭 제거)
+
+### 기술적 결정
+- `ServerFilter` 타입 신규: `waiting | dispatched | dispatch_failed` (OrderStatus와 구별)
+  - `waiting` = `status === booked AND dispatchStatus !== dispatch_failed`
+  - `dispatched` = `status === dispatched`
+  - `dispatch_failed` = `status === booked AND dispatchStatus === dispatch_failed`
+- 서버 모드 필터링을 클라이언트사이드로 처리 → API 변경 없음 (주문 수 적어 성능 문제 없음)
+- `useOrders(undefined)` 쿼리 키 공유로 중복 API 호출 없음

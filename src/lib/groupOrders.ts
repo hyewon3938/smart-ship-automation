@@ -1,4 +1,4 @@
-import type { Order, OrderGroup, OrderStatus } from "@/types";
+import type { Order, OrderGroup, OrderStatus, ServerFilter } from "@/types";
 
 /**
  * 같은 orderId를 가진 주문을 하나의 그룹으로 묶는다.
@@ -88,4 +88,55 @@ export function countGroupsByStatus(orders: Order[]): {
   }
 
   return counts;
+}
+
+/** 서버 대시보드용 — 발송 흐름 기준 그룹 카운트 */
+export function countGroupsByServerFilter(orders: Order[]): {
+  all: number;
+  waiting: number;
+  dispatched: number;
+  dispatch_failed: number;
+} {
+  const groups = groupOrdersByOrderId(orders);
+  const counts = { all: groups.length, waiting: 0, dispatched: 0, dispatch_failed: 0 };
+
+  for (const group of groups) {
+    const status = getGroupStatus(group.orders);
+    const dispatchStatus = group.orders[0]?.dispatchStatus;
+
+    if (status === "dispatched") {
+      counts.dispatched++;
+    } else if (status === "booked" && dispatchStatus === "dispatch_failed") {
+      counts.dispatch_failed++;
+    } else if (status === "booked") {
+      counts.waiting++;
+    }
+  }
+
+  return counts;
+}
+
+/** 서버 필터에 따라 주문 필터링 (전체: undefined) */
+export function filterOrdersByServerFilter(
+  orders: Order[],
+  filter: ServerFilter | undefined
+): Order[] {
+  if (!filter) return orders;
+
+  const groups = groupOrdersByOrderId(orders);
+  const matchingOrderIds = new Set<string>();
+
+  for (const group of groups) {
+    const status = getGroupStatus(group.orders);
+    const dispatchStatus = group.orders[0]?.dispatchStatus;
+
+    const match =
+      (filter === "waiting" && status === "booked" && dispatchStatus !== "dispatch_failed") ||
+      (filter === "dispatched" && status === "dispatched") ||
+      (filter === "dispatch_failed" && status === "booked" && dispatchStatus === "dispatch_failed");
+
+    if (match) matchingOrderIds.add(group.orderId);
+  }
+
+  return orders.filter((o) => matchingOrderIds.has(o.orderId));
 }
