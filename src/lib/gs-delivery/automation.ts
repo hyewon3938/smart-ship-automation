@@ -66,7 +66,9 @@ export async function bookNextDay(
   page: Page,
   task: BookingTask
 ): Promise<BookingResult> {
-  return fillAndSubmitForm(page, task, GS_URLS.NEXT_DAY, NEXT_DAY_SELECTORS);
+  // 2026-04 GS택배 사이트 변경: 내일배송 선택 페이지(내일택배/내일반값) 추가됨
+  // 선택 페이지를 건너뛰고 내일택배 폼 URL로 직접 이동
+  return fillAndSubmitForm(page, task, GS_URLS.NEXT_DAY_FORM, NEXT_DAY_SELECTORS);
 }
 
 /**
@@ -455,7 +457,7 @@ async function fillAndSubmitForm(
       pageText.includes("접수되었습니다") ||
       pageText.includes("예약 완료") ||
       pageText.includes("예약번호");
-    const urlChanged = !currentUrl.includes("domestic/index.do") && !currentUrl.includes("nextDay/nextIndex.do");
+    const urlChanged = !currentUrl.includes("domestic/index.do") && !currentUrl.includes("nextDay/nextIndex.do") && !currentUrl.includes("nextDmstc/contentsid/410/index.do");
 
     // 예약번호 추출 시도 (페이지에 표시된 경우)
     let reservationNo = await page.evaluate(() => {

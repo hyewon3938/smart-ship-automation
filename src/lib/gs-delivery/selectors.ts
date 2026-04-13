@@ -10,6 +10,8 @@ export const GS_URLS = {
   LOGIN: "https://www.cvsnet.co.kr/member/login/index.do",
   DOMESTIC: "https://www.cvsnet.co.kr/reservation-inquiry/domestic/index.do",
   NEXT_DAY: "https://www.cvsnet.co.kr/reservation-inquiry/nextDay/nextIndex.do",
+  /** 내일택배 실제 예약 폼 (선택 페이지에서 "내일택배" 클릭 시 이동) */
+  NEXT_DAY_FORM: "https://www.cvsnet.co.kr/reservation-inquiry/nextDmstc/contentsid/410/index.do",
   VISIT_PICKUP: "https://www.cvsnet.co.kr/reservation-inquiry/visit/contentsid/400/index.do",
   RESERVATION_LIST: "https://www.cvsnet.co.kr/my-page/reservation/list.do",
 } as const;
