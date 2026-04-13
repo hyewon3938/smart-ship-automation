@@ -293,10 +293,11 @@ export function upsertOrdersFromLocal(
 
   for (const item of orderItems) {
     if (existingProductOrderIds.has(item.productOrderId)) {
-      // 이미 있으면 UPDATE
+      // 이미 있으면 UPDATE (selectedDeliveryType 포함 — 로컬에서 변경했을 수 있음)
       db.update(orders)
         .set({
           status: "booked",
+          selectedDeliveryType: item.selectedDeliveryType,
           bookingResult: bookingResult ?? null,
           bookingReservationNo: bookingReservationNo ?? null,
           updatedAt: now,
