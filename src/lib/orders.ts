@@ -1,19 +1,36 @@
-import { desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, gte, inArray } from "drizzle-orm";
 
 import { db } from "@/lib/db";
 import { bookingLogs, orders } from "@/lib/db/schema";
 
 import type { BookingLogEntry, DeliveryTrackingStatus, DeliveryType, DispatchStatus, OrderStatus } from "@/types";
 
-/** 전체 주문 목록 조회 (최신순) */
+/** 최근 2주 기준 날짜 생성 */
+function twoWeeksAgo(): string {
+  const d = new Date();
+  d.setDate(d.getDate() - 14);
+  return d.toISOString();
+}
+
+/** 전체 주문 목록 조회 (최신순, 최근 2주만) */
 export function getOrders(status?: string) {
-  const query = db.select().from(orders).orderBy(desc(orders.createdAt));
+  const since = twoWeeksAgo();
 
   if (status) {
-    return query.where(eq(orders.status, status as OrderStatus)).all();
+    return db
+      .select()
+      .from(orders)
+      .where(and(eq(orders.status, status as OrderStatus), gte(orders.createdAt, since)))
+      .orderBy(desc(orders.createdAt))
+      .all();
   }
 
-  return query.all();
+  return db
+    .select()
+    .from(orders)
+    .where(gte(orders.createdAt, since))
+    .orderBy(desc(orders.createdAt))
+    .all();
 }
 
 /** 선택 주문 예약 시작 (상태 → booking) */
