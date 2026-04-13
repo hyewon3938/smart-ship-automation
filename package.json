@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "postinstall": "npm rebuild better-sqlite3 2>/dev/null || true",
     "deploy": "bash scripts/deploy.sh"
   },
   "dependencies": {

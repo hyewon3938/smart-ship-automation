@@ -108,16 +108,30 @@ export function updateGroupStatus(
   orderId: string,
   status: OrderStatus
 ): void {
-  const allowedStatuses = new Set(["pending", "booked", "failed"]);
+  const allowedStatuses = new Set(["pending", "booked", "failed", "dispatched"]);
   if (!allowedStatuses.has(status)) {
     throw new Error(`허용되지 않은 상태입니다: ${status}`);
   }
 
   const now = new Date().toISOString();
-  db.update(orders)
-    .set({ status, updatedAt: now })
-    .where(eq(orders.orderId, orderId))
-    .run();
+
+  if (status === "dispatched") {
+    // 수동 발송완료: status + dispatchStatus + dispatchedAt 일괄 설정
+    db.update(orders)
+      .set({
+        status,
+        dispatchStatus: "dispatched" as DispatchStatus,
+        dispatchedAt: now,
+        updatedAt: now,
+      })
+      .where(eq(orders.orderId, orderId))
+      .run();
+  } else {
+    db.update(orders)
+      .set({ status, updatedAt: now })
+      .where(eq(orders.orderId, orderId))
+      .run();
+  }
 }
 
 /** 주문 그룹 택배유형 일괄 변경 (orderId 기준) */
