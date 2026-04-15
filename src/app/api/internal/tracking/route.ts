@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
+import { verifyInternalApiKey } from "@/lib/internal-auth";
 import {
   addBookingLogByOrderId,
   updateTrackingNumbers,
@@ -7,10 +8,8 @@ import {
 
 /** POST /api/internal/tracking — 로컬에서 운송장번호 수신 후 서버 DB 업데이트 */
 export async function POST(request: NextRequest) {
-  const apiKey = request.headers.get("x-api-key");
-  if (!apiKey || apiKey !== process.env.INTERNAL_API_KEY) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const unauthorized = verifyInternalApiKey(request);
+  if (unauthorized) return unauthorized;
 
   try {
     const body = (await request.json()) as {
@@ -47,7 +46,10 @@ export async function POST(request: NextRequest) {
       updated,
     });
   } catch (error) {
-    const msg = error instanceof Error ? error.message : String(error);
-    return NextResponse.json({ error: msg }, { status: 500 });
+    console.error("[internal/tracking] 업데이트 실패:", error);
+    return NextResponse.json(
+      { error: "운송장 동기화 중 오류가 발생했습니다" },
+      { status: 500 }
+    );
   }
 }
