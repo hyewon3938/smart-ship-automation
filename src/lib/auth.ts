@@ -15,8 +15,8 @@ const SECRET = new TextEncoder().encode(authSecret);
 
 export const COOKIE_NAME = "smart-ship-session";
 
-/** 세션 최대 유지 시간: 30일 (초 단위) */
-export const SESSION_MAX_AGE = 30 * 24 * 60 * 60;
+/** 세션 최대 유지 시간: 7일 (초 단위) */
+export const SESSION_MAX_AGE = 7 * 24 * 60 * 60;
 
 /** JWT 세션 토큰 생성 */
 export async function createSessionToken(username: string): Promise<string> {
