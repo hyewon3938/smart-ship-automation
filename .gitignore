@@ -52,3 +52,6 @@ playwright-report/
 
 # Screenshots
 data/screenshots/
+
+# 비공개 운영 문서 (민감 정보 포함)
+docs/private/
