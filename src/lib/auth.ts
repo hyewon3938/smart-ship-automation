@@ -5,9 +5,13 @@
 
 import { SignJWT, jwtVerify } from "jose";
 
-const SECRET = new TextEncoder().encode(
-  process.env.AUTH_SECRET || "smart-ship-dev-secret-change-in-production"
-);
+const authSecret = process.env.AUTH_SECRET;
+if (!authSecret) {
+  throw new Error(
+    "AUTH_SECRET 환경 변수가 설정되지 않았습니다. .env.local 확인 필요."
+  );
+}
+const SECRET = new TextEncoder().encode(authSecret);
 
 export const COOKIE_NAME = "smart-ship-session";
 

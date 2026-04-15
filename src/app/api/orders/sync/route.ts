@@ -14,12 +14,8 @@ export async function POST() {
     });
   } catch (error) {
     console.error("주문 동기화 실패:", error);
-
-    const message =
-      error instanceof Error ? error.message : "알 수 없는 오류";
-
     return NextResponse.json(
-      { error: `주문 동기화에 실패했습니다: ${message}` },
+      { error: "주문 동기화에 실패했습니다" },
       { status: 500 }
     );
   }

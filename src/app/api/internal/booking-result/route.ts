@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
+import { verifyInternalApiKey } from "@/lib/internal-auth";
 import {
   addBookingLogByOrderId,
   updateOrdersByOrderId,
@@ -27,10 +28,8 @@ interface OrderItem {
 
 /** POST /api/internal/booking-result — 로컬 예약 결과 수신 후 서버 DB 업데이트 (없으면 INSERT) */
 export async function POST(request: NextRequest) {
-  const apiKey = request.headers.get("x-api-key");
-  if (!apiKey || apiKey !== process.env.INTERNAL_API_KEY) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const unauthorized = verifyInternalApiKey(request);
+  if (unauthorized) return unauthorized;
 
   try {
     const body = (await request.json()) as {
@@ -91,7 +90,10 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ message: "동기화 완료", orderId: body.orderId });
   } catch (error) {
-    const msg = error instanceof Error ? error.message : String(error);
-    return NextResponse.json({ error: msg }, { status: 500 });
+    console.error("[internal/booking-result] 처리 실패:", error);
+    return NextResponse.json(
+      { error: "예약 결과 동기화 중 오류가 발생했습니다" },
+      { status: 500 }
+    );
   }
 }
