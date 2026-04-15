@@ -3,14 +3,14 @@ import path from "path";
 
 import { NextRequest, NextResponse } from "next/server";
 
+import { verifyInternalApiKey } from "@/lib/internal-auth";
+
 const COOKIES_PATH = path.join(process.cwd(), "data", "cookies.json");
 
 /** POST /api/internal/cookies — 로컬에서 GS택배 쿠키 수신 후 저장 */
 export async function POST(request: NextRequest) {
-  const apiKey = request.headers.get("x-api-key");
-  if (!apiKey || apiKey !== process.env.INTERNAL_API_KEY) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const unauthorized = verifyInternalApiKey(request);
+  if (unauthorized) return unauthorized;
 
   try {
     const body = (await request.json()) as {

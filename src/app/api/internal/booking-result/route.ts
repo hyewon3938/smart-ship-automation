@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
+import { verifyInternalApiKey } from "@/lib/internal-auth";
 import {
   addBookingLogByOrderId,
   updateOrdersByOrderId,
@@ -27,10 +28,8 @@ interface OrderItem {
 
 /** POST /api/internal/booking-result — 로컬 예약 결과 수신 후 서버 DB 업데이트 (없으면 INSERT) */
 export async function POST(request: NextRequest) {
-  const apiKey = request.headers.get("x-api-key");
-  if (!apiKey || apiKey !== process.env.INTERNAL_API_KEY) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const unauthorized = verifyInternalApiKey(request);
+  if (unauthorized) return unauthorized;
 
   try {
     const body = (await request.json()) as {
