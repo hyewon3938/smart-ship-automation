@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
 import { verifyInternalApiKey } from "@/lib/internal-auth";
+import { maskId } from "@/lib/log-mask";
 import {
   addBookingLogByOrderId,
   updateTrackingNumbers,
@@ -43,7 +44,7 @@ export async function POST(request: NextRequest) {
       );
       updated++;
       console.log(
-        `[internal/tracking] ${item.orderId}: 운송장 ${item.trackingNumber}`
+        `[internal/tracking] ${maskId(item.orderId)}: 운송장 ${maskId(item.trackingNumber)}`
       );
     }
 

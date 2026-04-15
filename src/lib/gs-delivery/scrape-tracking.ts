@@ -1,6 +1,8 @@
 import fs from "fs";
 import path from "path";
 
+import { maskId } from "@/lib/log-mask";
+
 import { GS_URLS } from "./selectors";
 
 export interface ReservationInfo {
@@ -120,7 +122,7 @@ export async function scrapeTrackingNumbers(
     if (originalNo) {
       results.push({ reservationNo: originalNo, trackingNo });
       console.log(
-        `[scrape-tracking] ✅ 매칭: ${originalNo} → ${trackingNo ?? "미배정"}`
+        `[scrape-tracking] ✅ 매칭: ${maskId(originalNo)} → ${trackingNo ? maskId(trackingNo) : "미배정"}`
       );
     }
   }

@@ -1,4 +1,5 @@
 import { scrapeTrackingNumbers } from "@/lib/gs-delivery/scrape-tracking";
+import { maskId } from "@/lib/log-mask";
 import { dispatchOrders, DELIVERY_COMPANY_CODES } from "@/lib/naver/dispatch";
 import { fetchDeliveryStatuses } from "@/lib/naver/orders";
 import {
@@ -110,7 +111,7 @@ export async function checkAndDispatch(): Promise<CheckAndDispatchResult> {
             );
             result.tracked++;
             console.log(
-              `[dispatch-worker] 운송장 감지 — 주문: ${group.orderId}, 운송장: ${tr.trackingNo}`
+              `[dispatch-worker] 운송장 감지 — 주문: ${maskId(group.orderId)}, 운송장: ${maskId(tr.trackingNo)}`
             );
           }
         } catch (err) {
@@ -153,7 +154,7 @@ export async function checkAndDispatch(): Promise<CheckAndDispatchResult> {
               );
               result.dispatched++;
               console.log(
-                `[dispatch-worker] ✅ 발송처리 완료 — 주문: ${group.orderId}`
+                `[dispatch-worker] ✅ 발송처리 완료 — 주문: ${maskId(group.orderId)}`
               );
             } else {
               updateDispatchStatus(group.orderId, "dispatch_failed");
@@ -165,7 +166,7 @@ export async function checkAndDispatch(): Promise<CheckAndDispatchResult> {
               );
               result.errors.push(`${group.orderId}: ${errMsg}`);
               console.error(
-                `[dispatch-worker] ❌ 발송처리 실패 — ${group.orderId}: ${errMsg}`
+                `[dispatch-worker] ❌ 발송처리 실패 — ${maskId(group.orderId)}: ${errMsg}`
               );
             }
           } catch (err) {
@@ -173,7 +174,7 @@ export async function checkAndDispatch(): Promise<CheckAndDispatchResult> {
               err instanceof Error ? err.message : "알 수 없는 오류";
             result.errors.push(`${group.orderId}: ${msg}`);
             console.error(
-              `[dispatch-worker] ❌ 예외 — ${group.orderId}: ${msg}`
+              `[dispatch-worker] ❌ 예외 — ${maskId(group.orderId)}: ${msg}`
             );
           }
         }
@@ -196,7 +197,7 @@ export async function checkAndDispatch(): Promise<CheckAndDispatchResult> {
               info.pickupDate
             );
             console.log(
-              `[dispatch-worker] 📦 ${info.status === "delivering" ? "집화 확인" : "배송 완료"} — 주문: ${order.orderId}`
+              `[dispatch-worker] 📦 ${info.status === "delivering" ? "집화 확인" : "배송 완료"} — 주문: ${maskId(order.orderId)}`
             );
           }
         }

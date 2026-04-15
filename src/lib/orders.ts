@@ -2,6 +2,7 @@ import { and, desc, eq, gte, inArray } from "drizzle-orm";
 
 import { db } from "@/lib/db";
 import { bookingLogs, orders } from "@/lib/db/schema";
+import { maskId } from "@/lib/log-mask";
 
 import type { BookingLogEntry, DeliveryTrackingStatus, DeliveryType, DispatchStatus, OrderStatus } from "@/types";
 
@@ -334,7 +335,7 @@ export function upsertOrdersFromLocal(
   }
 
   console.log(
-    `[orders] upsert 완료: ${orderId} — 기존 ${existingProductOrderIds.size}건, 신규 ${orderItems.length - existingProductOrderIds.size}건`
+    `[orders] upsert 완료: ${maskId(orderId)} — 기존 ${existingProductOrderIds.size}건, 신규 ${orderItems.length - existingProductOrderIds.size}건`
   );
 }
 
