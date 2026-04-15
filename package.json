@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "postinstall": "npm rebuild better-sqlite3 2>/dev/null || true",
-    "deploy": "bash scripts/deploy.sh"
+    "deploy": "bash scripts/deploy-fast.sh",
+    "deploy:init": "bash scripts/deploy.sh"
   },
   "dependencies": {
     "@base-ui/react": "^1.3.0",
