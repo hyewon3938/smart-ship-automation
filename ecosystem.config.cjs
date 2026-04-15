@@ -7,7 +7,7 @@ module.exports = {
       env: {
         NODE_ENV: "production",
         PORT: 3000,
-        HOSTNAME: "0.0.0.0",
+        HOSTNAME: "127.0.0.1",
       },
       max_memory_restart: "500M",
       error_file: "./logs/error.log",
