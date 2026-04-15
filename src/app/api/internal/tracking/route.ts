@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 
 import { verifyInternalApiKey } from "@/lib/internal-auth";
 import {
@@ -6,29 +7,34 @@ import {
   updateTrackingNumbers,
 } from "@/lib/orders";
 
+const bodySchema = z.object({
+  items: z
+    .array(
+      z.object({
+        orderId: z.string().min(1),
+        trackingNumber: z.string().min(1),
+      })
+    )
+    .min(1),
+});
+
 /** POST /api/internal/tracking — 로컬에서 운송장번호 수신 후 서버 DB 업데이트 */
 export async function POST(request: NextRequest) {
   const unauthorized = verifyInternalApiKey(request);
   if (unauthorized) return unauthorized;
 
   try {
-    const body = (await request.json()) as {
-      items?: Array<{
-        orderId: string;
-        trackingNumber: string;
-      }>;
-    };
-
-    if (!body.items || !Array.isArray(body.items) || body.items.length === 0) {
+    const parsed = bodySchema.safeParse(await request.json().catch(() => null));
+    if (!parsed.success) {
       return NextResponse.json(
-        { error: "items 배열이 필요합니다" },
+        { error: "요청 형식이 올바르지 않습니다" },
         { status: 400 }
       );
     }
+    const { items } = parsed.data;
 
     let updated = 0;
-    for (const item of body.items) {
-      if (!item.orderId || !item.trackingNumber) continue;
+    for (const item of items) {
       updateTrackingNumbers(item.orderId, item.trackingNumber);
       addBookingLogByOrderId(
         item.orderId,
