@@ -296,3 +296,30 @@
   - `dispatch_failed` = `status === booked AND dispatchStatus === dispatch_failed`
 - 서버 모드 필터링을 클라이언트사이드로 처리 → API 변경 없음 (주문 수 적어 성능 문제 없음)
 - `useOrders(undefined)` 쿼리 키 공유로 중복 API 호출 없음
+
+## 2026-04-15 — 서버 배포 시간 단축 (standalone + 로컬 빌드)
+
+### 문제
+- 매 배포마다 서버에서 `npm run build` 실행 → 실측 22분+ 소요
+- VM 메모리 제약(~1GB)으로 빌드 시 1.5GB swap 사용 → I/O wait 27~43%
+- `git pull && npm run build && pm2 restart` 패턴은 저사양 환경에서 현실성 낮음
+
+### 해결
+- Next.js `output: "standalone"` 활성화 → 필요한 파일만 번들 (52MB)
+- 빌드는 로컬(Mac)에서 수행, `.next/standalone` + `.next/static` + `public` 만 rsync로 서버 전송
+- `scripts/deploy-fast.sh` 신규 (`npm run deploy`): 빌드 → rsync → symlink 보정 → PM2 startOrRestart
+- `ecosystem.config.cjs`: `.next/standalone/server.js` 실행 방식으로 전환
+- Linux용 `better_sqlite3.node`는 서버의 기존 `node_modules`에서 복사 — 재컴파일 스킵
+- `data/`, `.env.local`은 `.next/standalone/` 내부에서 프로젝트 루트로 symlink (server.js의 `process.chdir(__dirname)` 대응)
+- 배포 설정(`DEPLOY_SSH_HOST` 등)은 `.env.local`로 분리 → 스크립트에 호스트/경로 하드코딩 없음
+
+### 결과
+- **배포 총 시간: 22분+ → 21초 (약 63배)**
+- 서버 부팅 시간: 7.5초 → 3.8초 (standalone 부팅이 더 가벼움)
+- 서버에서 `npm run build` 완전 제거
+
+### 기술적 결정
+- `outputFileTracingExcludes`: `typescript`, `data/**`, 테스트 파일, `playwright-core/.local-browsers` 제외
+- `serverExternalPackages`의 native 모듈(`better-sqlite3`, `playwright`)은 번들 제외 유지 — 플랫폼별 바이너리 처리 단순화
+- PM2 `cwd`는 프로젝트 루트 유지 (로그 경로 불변), Node는 server.js에서 standalone 폴더로 chdir
+- deploy-fast.sh는 `.env.local`의 `DEPLOY_*` 변수만 선택 로드 → 다른 변수 값의 공백 이슈 회피
