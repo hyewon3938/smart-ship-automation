@@ -90,7 +90,10 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ message: "동기화 완료", orderId: body.orderId });
   } catch (error) {
-    const msg = error instanceof Error ? error.message : String(error);
-    return NextResponse.json({ error: msg }, { status: 500 });
+    console.error("[internal/booking-result] 처리 실패:", error);
+    return NextResponse.json(
+      { error: "예약 결과 동기화 중 오류가 발생했습니다" },
+      { status: 500 }
+    );
   }
 }

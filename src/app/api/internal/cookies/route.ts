@@ -35,7 +35,10 @@ export async function POST(request: NextRequest) {
       message: `쿠키 ${body.cookies.length}개 저장 완료`,
     });
   } catch (error) {
-    const msg = error instanceof Error ? error.message : String(error);
-    return NextResponse.json({ error: msg }, { status: 500 });
+    console.error("[internal/cookies] 저장 실패:", error);
+    return NextResponse.json(
+      { error: "쿠키 저장 중 오류가 발생했습니다" },
+      { status: 500 }
+    );
   }
 }

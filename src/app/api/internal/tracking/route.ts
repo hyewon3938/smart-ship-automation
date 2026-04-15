@@ -46,7 +46,10 @@ export async function POST(request: NextRequest) {
       updated,
     });
   } catch (error) {
-    const msg = error instanceof Error ? error.message : String(error);
-    return NextResponse.json({ error: msg }, { status: 500 });
+    console.error("[internal/tracking] 업데이트 실패:", error);
+    return NextResponse.json(
+      { error: "운송장 동기화 중 오류가 발생했습니다" },
+      { status: 500 }
+    );
   }
 }
