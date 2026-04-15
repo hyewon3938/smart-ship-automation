@@ -3,8 +3,12 @@ import { newPage } from "@/lib/gs-delivery/browser";
 import { ensureLoggedIn } from "@/lib/gs-delivery/auth";
 import { GS_URLS, ACTION_DELAY_MS } from "@/lib/gs-delivery/selectors";
 
-/** GET /api/dispatch/debug-scrape — 예약조회 페이지 HTML 구조 덤프 (디버그용) */
+/** GET /api/dispatch/debug-scrape — 예약조회 페이지 HTML 구조 덤프 (디버그용, 개발 환경 전용) */
 export async function GET() {
+  if (process.env.NODE_ENV === "production") {
+    return NextResponse.json({ error: "Not Found" }, { status: 404 });
+  }
+
   const page = await newPage();
   try {
     await ensureLoggedIn(page);
