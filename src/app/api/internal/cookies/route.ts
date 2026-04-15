@@ -2,10 +2,15 @@ import fs from "fs";
 import path from "path";
 
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 
 import { verifyInternalApiKey } from "@/lib/internal-auth";
 
 const COOKIES_PATH = path.join(process.cwd(), "data", "cookies.json");
+
+const bodySchema = z.object({
+  cookies: z.array(z.record(z.string(), z.unknown())).min(1),
+});
 
 /** POST /api/internal/cookies — 로컬에서 GS택배 쿠키 수신 후 저장 */
 export async function POST(request: NextRequest) {
@@ -13,26 +18,24 @@ export async function POST(request: NextRequest) {
   if (unauthorized) return unauthorized;
 
   try {
-    const body = (await request.json()) as {
-      cookies?: Array<Record<string, unknown>>;
-    };
-
-    if (!body.cookies || !Array.isArray(body.cookies)) {
+    const parsed = bodySchema.safeParse(await request.json().catch(() => null));
+    if (!parsed.success) {
       return NextResponse.json(
-        { error: "cookies 배열이 필요합니다" },
+        { error: "요청 형식이 올바르지 않습니다" },
         { status: 400 }
       );
     }
+    const { cookies } = parsed.data;
 
     const dir = path.dirname(COOKIES_PATH);
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(COOKIES_PATH, JSON.stringify(body.cookies, null, 2));
+    fs.writeFileSync(COOKIES_PATH, JSON.stringify(cookies, null, 2));
 
     console.log(
-      `[internal/cookies] GS택배 쿠키 저장 완료 (${body.cookies.length}개)`
+      `[internal/cookies] GS택배 쿠키 저장 완료 (${cookies.length}개)`
     );
     return NextResponse.json({
-      message: `쿠키 ${body.cookies.length}개 저장 완료`,
+      message: `쿠키 ${cookies.length}개 저장 완료`,
     });
   } catch (error) {
     console.error("[internal/cookies] 저장 실패:", error);

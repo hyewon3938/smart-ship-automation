@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 
 import { verifyInternalApiKey } from "@/lib/internal-auth";
 import {
@@ -7,24 +8,38 @@ import {
   upsertOrdersFromLocal,
 } from "@/lib/orders";
 
-import type { OrderStatus } from "@/types";
+const orderItemSchema = z.object({
+  productOrderId: z.string().min(1),
+  orderDate: z.string(),
+  productName: z.string(),
+  quantity: z.number(),
+  optionInfo: z.string().nullable(),
+  totalPrice: z.number().nullable(),
+  recipientName: z.string(),
+  recipientPhone: z.string(),
+  recipientAddress: z.string(),
+  recipientAddressDetail: z.string().nullable(),
+  recipientZipCode: z.string(),
+  shippingMemo: z.string().nullable(),
+  isNextDayEligible: z.boolean(),
+  selectedDeliveryType: z.enum(["domestic", "nextDay"]),
+});
 
-interface OrderItem {
-  productOrderId: string;
-  orderDate: string;
-  productName: string;
-  quantity: number;
-  optionInfo: string | null;
-  totalPrice: number | null;
-  recipientName: string;
-  recipientPhone: string;
-  recipientAddress: string;
-  recipientAddressDetail: string | null;
-  recipientZipCode: string;
-  shippingMemo: string | null;
-  isNextDayEligible: boolean;
-  selectedDeliveryType: "domestic" | "nextDay";
-}
+const bodySchema = z.object({
+  orderId: z.string().min(1),
+  status: z.enum([
+    "pending",
+    "booking",
+    "booked",
+    "failed",
+    "skipped",
+    "dispatched",
+  ]),
+  bookingResult: z.string().optional(),
+  bookingReservationNo: z.string().optional(),
+  error: z.string().optional(),
+  orderItems: z.array(orderItemSchema).optional(),
+});
 
 /** POST /api/internal/booking-result — 로컬 예약 결과 수신 후 서버 DB 업데이트 (없으면 INSERT) */
 export async function POST(request: NextRequest) {
@@ -32,24 +47,16 @@ export async function POST(request: NextRequest) {
   if (unauthorized) return unauthorized;
 
   try {
-    const body = (await request.json()) as {
-      orderId: string;
-      status: OrderStatus;
-      bookingResult?: string;
-      bookingReservationNo?: string;
-      error?: string;
-      orderItems?: OrderItem[];
-    };
-
-    if (!body.orderId || !body.status) {
+    const parsed = bodySchema.safeParse(await request.json().catch(() => null));
+    if (!parsed.success) {
       return NextResponse.json(
-        { error: "orderId와 status가 필요합니다" },
+        { error: "요청 형식이 올바르지 않습니다" },
         { status: 400 }
       );
     }
+    const body = parsed.data;
 
     if (body.status === "booked") {
-      // orderItems가 있으면 upsert (서버 DB에 없는 주문도 INSERT)
       if (body.orderItems && body.orderItems.length > 0) {
         upsertOrdersFromLocal(
           body.orderId,
@@ -58,7 +65,6 @@ export async function POST(request: NextRequest) {
           body.bookingReservationNo
         );
       } else {
-        // orderItems 없으면 기존 방식 (UPDATE only)
         updateOrdersByOrderId(
           body.orderId,
           "booked",
