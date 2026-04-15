@@ -70,7 +70,8 @@ cp -f /home/ubuntu/smart-ship-automation/node_modules/better-sqlite3/build/Relea
 REMOTE_SCRIPT
 
 step "[5/5] 앱 재시작 (ecosystem config 반영)"
-ssh "${SSH_OPTS[@]}" "$SERVER" "cd $REMOTE && pm2 startOrRestart ecosystem.config.cjs --update-env && pm2 save"
+# pm2 restart 만으로는 require 캐시가 갱신되지 않는 경우가 있어 delete + start 로 강제 재기동
+ssh "${SSH_OPTS[@]}" "$SERVER" "cd $REMOTE && pm2 delete smart-ship 2>/dev/null || true && pm2 start ecosystem.config.cjs && pm2 save"
 
 echo ""
 echo "✅ 배포 완료"
