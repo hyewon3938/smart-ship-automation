@@ -82,10 +82,18 @@ async function fetchOrdersForWindow(
     }
 
     const parsed = conditionalOrdersResponseSchema.parse(json);
-    const orders = parsed.data.contents.map((c) =>
-      toProductOrderDetail(c.content),
-    );
-    results.push(...orders);
+    const mapped = parsed.data.contents
+      .map((c) => toProductOrderDetail(c.content))
+      .filter((o): o is ProductOrderDetail => o !== null);
+
+    const skippedInPage = parsed.data.contents.length - mapped.length;
+    if (skippedInPage > 0) {
+      console.warn(
+        `[naver/orders] 배송지 없는 주문 ${skippedInPage}건 스킵 (page=${page})`,
+      );
+    }
+
+    results.push(...mapped);
 
     hasNext = parsed.data.pagination.hasNext;
     page++;
