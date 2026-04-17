@@ -32,13 +32,15 @@ export const conditionalOrderContentSchema = z.object({
     optionCode: z.string().optional(),
     placeOrderStatus: z.string(),
     shippingMemo: z.string().optional(),
-    shippingAddress: z.object({
-      name: z.string(),
-      tel1: z.string(),
-      baseAddress: z.string(),
-      detailedAddress: z.string().optional(),
-      zipCode: z.string(),
-    }),
+    shippingAddress: z
+      .object({
+        name: z.string(),
+        tel1: z.string(),
+        baseAddress: z.string(),
+        detailedAddress: z.string().optional(),
+        zipCode: z.string(),
+      })
+      .optional(),
   }),
 });
 
@@ -84,8 +86,14 @@ export interface ProductOrderDetail {
   };
 }
 
-/** 조건형 API 응답 → ProductOrderDetail 변환 */
-export function toProductOrderDetail(raw: ConditionalOrderContent): ProductOrderDetail {
+/**
+ * 조건형 API 응답 → ProductOrderDetail 변환.
+ * 배송지가 없는 주문(디지털 상품 등)은 택배 자동화 대상이 아니므로 null 반환.
+ */
+export function toProductOrderDetail(raw: ConditionalOrderContent): ProductOrderDetail | null {
+  const addr = raw.productOrder.shippingAddress;
+  if (!addr) return null;
+
   return {
     productOrderId: raw.productOrder.productOrderId,
     orderId: raw.order.orderId,
@@ -97,11 +105,11 @@ export function toProductOrderDetail(raw: ConditionalOrderContent): ProductOrder
     placeOrderStatus: raw.productOrder.placeOrderStatus,
     shippingMemo: raw.productOrder.shippingMemo ?? null,
     shippingAddress: {
-      name: raw.productOrder.shippingAddress.name,
-      tel1: raw.productOrder.shippingAddress.tel1,
-      baseAddress: raw.productOrder.shippingAddress.baseAddress,
-      detailedAddress: raw.productOrder.shippingAddress.detailedAddress ?? null,
-      zipCode: raw.productOrder.shippingAddress.zipCode,
+      name: addr.name,
+      tel1: addr.tel1,
+      baseAddress: addr.baseAddress,
+      detailedAddress: addr.detailedAddress ?? null,
+      zipCode: addr.zipCode,
     },
   };
 }

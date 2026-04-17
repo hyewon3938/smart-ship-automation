@@ -4,6 +4,7 @@ module.exports = {
       name: "smart-ship",
       script: ".next/standalone/server.js",
       cwd: "/home/ubuntu/smart-ship-automation",
+      node_args: "--env-file=.env.local",
       env: {
         NODE_ENV: "production",
         PORT: 3000,
