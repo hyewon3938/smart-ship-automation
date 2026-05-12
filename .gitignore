@@ -55,3 +55,6 @@ data/screenshots/
 
 # 비공개 운영 문서 (민감 정보 포함)
 docs/private/
+
+# Claude Code 로컬 권한 캐시 (개발자별로 다름)
+.claude/settings.local.json
