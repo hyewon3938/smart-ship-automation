@@ -7,9 +7,13 @@ import type { Browser, BrowserContext, Page } from "playwright";
 
 let browser: Browser | null = null;
 let context: BrowserContext | null = null;
+let idleTimer: ReturnType<typeof setTimeout> | null = null;
 
 /** 쿠키 저장 경로 — 로그인 세션 재사용용 */
 const COOKIES_PATH = path.join(process.cwd(), "data", "cookies.json");
+
+/** Idle 타임아웃 — 큐 비고 N분간 신규 작업 없으면 브라우저 자동 종료 */
+const IDLE_TIMEOUT_MS = 5 * 60 * 1000;
 
 /** 서버 모드 여부 — DEPLOY_MODE=server 이면 headless */
 const isServerMode = () => process.env.DEPLOY_MODE === "server";
@@ -100,8 +104,38 @@ async function restoreCookies(ctx: BrowserContext): Promise<void> {
   }
 }
 
+/**
+ * Idle 종료 타이머 시작. 이미 예약된 타이머가 있으면 재설정.
+ * worker.ts에서 큐 처리 완료 시 호출.
+ */
+export function scheduleIdleShutdown(): void {
+  if (idleTimer) clearTimeout(idleTimer);
+  idleTimer = setTimeout(() => {
+    idleTimer = null;
+    console.log(
+      `[browser] ${IDLE_TIMEOUT_MS / 1000 / 60}분간 idle — 자동 종료`,
+    );
+    void closeBrowser();
+  }, IDLE_TIMEOUT_MS);
+}
+
+/**
+ * Idle 종료 타이머 취소.
+ * worker.ts에서 신규 작업 enqueue 시 호출.
+ */
+export function cancelIdleShutdown(): void {
+  if (idleTimer) {
+    clearTimeout(idleTimer);
+    idleTimer = null;
+  }
+}
+
 /** 브라우저 + 컨텍스트 전체 정리 (쿠키 저장 후 종료) */
 export async function closeBrowser(): Promise<void> {
+  if (idleTimer) {
+    clearTimeout(idleTimer);
+    idleTimer = null;
+  }
   await saveCookies();
   if (context) {
     await context.close().catch(() => {});
