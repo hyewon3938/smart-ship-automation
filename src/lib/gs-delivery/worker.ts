@@ -299,7 +299,12 @@ export async function enqueueVisitPickup(task: VisitPickupTask): Promise<void> {
       console.log(
         `[worker] ✅ 방문택배 폼 입력 완료 — 브라우저에서 확인 후 예약하기를 클릭해주세요`,
       );
-      // 페이지를 닫지 않음 — 사용자가 직접 확인하고 예약
+      // 페이지를 닫지 않음 — 사용자가 직접 확인하고 예약.
+      // 사용자가 페이지를 닫으면 브라우저도 함께 정리한다.
+      page.once("close", () => {
+        console.log("[worker] 방문택배 페이지 종료 감지 — 브라우저 정리");
+        void closeBrowser();
+      });
     } else {
       updateOrderStatusBatch(task.allOrderDbIds, "failed", result.error);
       addBookingLog(
