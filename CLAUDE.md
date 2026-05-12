@@ -150,7 +150,8 @@ npm run dev
 
 ### 서버 배포
 ```bash
-ssh -i ~/.ssh/slack-ai-agents.key ubuntu@140.245.69.231 \
+# 호스트/키는 ~/.ssh/config 또는 로컬 환경에서 관리
+ssh <server> \
   "cd smart-ship-automation && git pull && npm run build && pm2 restart smart-ship"
 ```
 
