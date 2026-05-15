@@ -26,6 +26,8 @@ const isServerMode = () => process.env.DEPLOY_MODE === "server";
 export async function getBrowser(): Promise<Browser> {
   if (browser?.isConnected()) return browser;
 
+  registerShutdownHandlers();
+
   browser = await chromium.launch({
     headless: isServerMode(),
     args: [
@@ -128,6 +130,26 @@ export function cancelIdleShutdown(): void {
     clearTimeout(idleTimer);
     idleTimer = null;
   }
+}
+
+let shutdownRegistered = false;
+
+function registerShutdownHandlers(): void {
+  if (shutdownRegistered) return;
+  shutdownRegistered = true;
+
+  const shutdown = async (signal: NodeJS.Signals) => {
+    console.log(`[browser] ${signal} 수신 — graceful shutdown`);
+    try {
+      await closeBrowser();
+    } catch (err) {
+      console.error("[browser] 브라우저 정리 실패:", err);
+    }
+    process.exit(0);
+  };
+
+  process.once("SIGINT", () => void shutdown("SIGINT"));
+  process.once("SIGTERM", () => void shutdown("SIGTERM"));
 }
 
 /** 브라우저 + 컨텍스트 전체 정리 (쿠키 저장 후 종료) */
