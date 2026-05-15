@@ -1,10 +1,16 @@
-import { and, desc, eq, gte, inArray } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, ne } from "drizzle-orm";
 
 import { db } from "@/lib/db";
 import { bookingLogs, orders } from "@/lib/db/schema";
 import { maskId } from "@/lib/log-mask";
 
-import type { BookingLogEntry, DeliveryTrackingStatus, DeliveryType, DispatchStatus, OrderStatus } from "@/types";
+import type {
+  BookingLogEntry,
+  DeliveryTrackingStatus,
+  DeliveryType,
+  DispatchStatus,
+  OrderStatus,
+} from "@/types";
 
 /** 최근 2주 기준 날짜 생성 */
 function twoWeeksAgo(): string {
@@ -21,7 +27,12 @@ export function getOrders(status?: string) {
     return db
       .select()
       .from(orders)
-      .where(and(eq(orders.status, status as OrderStatus), gte(orders.createdAt, since)))
+      .where(
+        and(
+          eq(orders.status, status as OrderStatus),
+          gte(orders.createdAt, since),
+        ),
+      )
       .orderBy(desc(orders.createdAt))
       .all();
   }
@@ -52,11 +63,11 @@ export function bookOrders(orderIds: number[]) {
   // 예약 가능 상태(pending/failed)가 아닌 주문 확인
   const bookableStatuses = new Set(["pending", "failed"]);
   const nonBookable = targetOrders.filter(
-    (o) => !bookableStatuses.has(o.status)
+    (o) => !bookableStatuses.has(o.status),
   );
   if (nonBookable.length > 0) {
     throw new Error(
-      `대기/실패 상태의 주문만 예약할 수 있습니다 (${nonBookable.length}건 불가)`
+      `대기/실패 상태의 주문만 예약할 수 있습니다 (${nonBookable.length}건 불가)`,
     );
   }
 
@@ -80,7 +91,7 @@ export function updateOrderStatusBatch(
   ids: number[],
   status: OrderStatus,
   bookingResult?: string,
-  bookingReservationNo?: string
+  bookingReservationNo?: string,
 ): void {
   if (ids.length === 0) return;
   db.update(orders)
@@ -109,7 +120,7 @@ export function addBookingLog(
   orderId: number,
   action: string,
   detail?: string,
-  screenshotPath?: string
+  screenshotPath?: string,
 ): void {
   db.insert(bookingLogs)
     .values({
@@ -122,11 +133,13 @@ export function addBookingLog(
 }
 
 /** 주문 그룹 상태 수동 변경 (orderId 기준, 전체 상품 일괄) */
-export function updateGroupStatus(
-  orderId: string,
-  status: OrderStatus
-): void {
-  const allowedStatuses = new Set(["pending", "booked", "failed", "dispatched"]);
+export function updateGroupStatus(orderId: string, status: OrderStatus): void {
+  const allowedStatuses = new Set([
+    "pending",
+    "booked",
+    "failed",
+    "dispatched",
+  ]);
   if (!allowedStatuses.has(status)) {
     throw new Error(`허용되지 않은 상태입니다: ${status}`);
   }
@@ -155,7 +168,7 @@ export function updateGroupStatus(
 /** 주문 그룹 택배유형 일괄 변경 (orderId 기준) */
 export function updateGroupDeliveryType(
   orderId: string,
-  deliveryType: DeliveryType
+  deliveryType: DeliveryType,
 ): void {
   const groupOrders = db
     .select()
@@ -167,7 +180,7 @@ export function updateGroupDeliveryType(
 
   const bookableStatuses = new Set(["pending", "failed"]);
   const nonBookable = groupOrders.filter(
-    (o) => !bookableStatuses.has(o.status)
+    (o) => !bookableStatuses.has(o.status),
   );
   if (nonBookable.length > 0) {
     throw new Error("대기/실패 상태의 주문만 변경할 수 있습니다");
@@ -249,11 +262,7 @@ export function getLocalBookedOrders(): Array<{
 
 /** orderId로 주문 상세 데이터 조회 (서버 동기화용) */
 export function getOrderDetailsByOrderId(orderId: string) {
-  return db
-    .select()
-    .from(orders)
-    .where(eq(orders.orderId, orderId))
-    .all();
+  return db.select().from(orders).where(eq(orders.orderId, orderId)).all();
 }
 
 /**
@@ -279,21 +288,35 @@ export function upsertOrdersFromLocal(
     selectedDeliveryType: "domestic" | "nextDay";
   }>,
   bookingResult?: string,
-  bookingReservationNo?: string
+  bookingReservationNo?: string,
 ): void {
   const now = new Date().toISOString();
 
-  // 기존 주문 확인
+  // 기존 주문 확인 (status 포함 — dispatched 보호용)
   const existing = db
-    .select({ productOrderId: orders.productOrderId })
+    .select({
+      productOrderId: orders.productOrderId,
+      status: orders.status,
+    })
     .from(orders)
     .where(eq(orders.orderId, orderId))
     .all();
 
-  const existingProductOrderIds = new Set(existing.map((r) => r.productOrderId));
+  const existingStatusByProductOrderId = new Map(
+    existing.map((r) => [r.productOrderId, r.status]),
+  );
 
+  let skippedDispatched = 0;
   for (const item of orderItems) {
-    if (existingProductOrderIds.has(item.productOrderId)) {
+    const existingStatus = existingStatusByProductOrderId.get(
+      item.productOrderId,
+    );
+    if (existingStatus !== undefined) {
+      // 발송처리 완료된 주문은 booked로 되돌리지 않음
+      if (existingStatus === "dispatched") {
+        skippedDispatched++;
+        continue;
+      }
       // 이미 있으면 UPDATE (selectedDeliveryType 포함 — 로컬에서 변경했을 수 있음)
       db.update(orders)
         .set({
@@ -334,15 +357,17 @@ export function upsertOrdersFromLocal(
     }
   }
 
+  const existingCount = existingStatusByProductOrderId.size;
   console.log(
-    `[orders] upsert 완료: ${maskId(orderId)} — 기존 ${existingProductOrderIds.size}건, 신규 ${orderItems.length - existingProductOrderIds.size}건`
+    `[orders] upsert 완료: ${maskId(orderId)} — 기존 ${existingCount}건, 신규 ${orderItems.length - existingCount}건` +
+      (skippedDispatched > 0 ? `, 발송완료 보호 ${skippedDispatched}건` : ""),
   );
 }
 
 /** 운송장번호 업데이트 + pending_dispatch 마킹 (orderId 기준 일괄) */
 export function updateTrackingNumbers(
   orderId: string,
-  trackingNumber: string
+  trackingNumber: string,
 ): void {
   db.update(orders)
     .set({
@@ -357,13 +382,14 @@ export function updateTrackingNumbers(
 /** 발송처리 상태 업데이트 (orderId 기준 일괄) */
 export function updateDispatchStatus(
   orderId: string,
-  status: "dispatched" | "dispatch_failed"
+  status: "dispatched" | "dispatch_failed",
 ): void {
   const now = new Date().toISOString();
   db.update(orders)
     .set({
       dispatchStatus: status as DispatchStatus,
-      status: status === "dispatched" ? ("dispatched" as OrderStatus) : undefined,
+      status:
+        status === "dispatched" ? ("dispatched" as OrderStatus) : undefined,
       dispatchedAt: status === "dispatched" ? now : null,
       updatedAt: now,
     })
@@ -374,12 +400,13 @@ export function updateDispatchStatus(
 /**
  * orderId 기준으로 해당 주문 그룹 상태를 일괄 업데이트.
  * 서버에서 로컬 예약 결과를 수신할 때 사용 (DB의 row id가 서버와 다를 수 있음).
+ * 발송처리 완료(dispatched)된 row는 제외 — 로컬 재동기화로 booked로 되돌아가는 것 방지.
  */
 export function updateOrdersByOrderId(
   orderId: string,
   status: OrderStatus,
   bookingResult?: string,
-  bookingReservationNo?: string
+  bookingReservationNo?: string,
 ): void {
   db.update(orders)
     .set({
@@ -388,7 +415,12 @@ export function updateOrdersByOrderId(
       bookingReservationNo: bookingReservationNo ?? null,
       updatedAt: new Date().toISOString(),
     })
-    .where(eq(orders.orderId, orderId))
+    .where(
+      and(
+        eq(orders.orderId, orderId),
+        ne(orders.status, "dispatched" as OrderStatus),
+      ),
+    )
     .run();
 }
 
@@ -399,7 +431,7 @@ export function updateOrdersByOrderId(
 export function addBookingLogByOrderId(
   orderId: string,
   action: string,
-  detail?: string
+  detail?: string,
 ): void {
   const first = db
     .select({ id: orders.id })
@@ -434,7 +466,7 @@ export function getUncheckedDispatchedOrders(): Array<{
 export function updateDeliveryStatus(
   productOrderId: string,
   deliveryStatus: DeliveryTrackingStatus,
-  pickupDate?: string | null
+  pickupDate?: string | null,
 ): void {
   db.update(orders)
     .set({
