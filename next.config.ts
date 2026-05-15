@@ -2,7 +2,7 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   output: "standalone",
-  serverExternalPackages: ["better-sqlite3", "playwright"],
+  serverExternalPackages: ["better-sqlite3", "playwright", "playwright-core"],
   outputFileTracingExcludes: {
     "*": [
       "node_modules/playwright-core/.local-browsers/**",
