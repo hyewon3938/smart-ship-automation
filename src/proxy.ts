@@ -16,11 +16,11 @@ const PUBLIC_PATHS = [
 
 function isPublicPath(pathname: string): boolean {
   return PUBLIC_PATHS.some((p) =>
-    p.endsWith("/") ? pathname.startsWith(p) : pathname === p
+    p.endsWith("/") ? pathname.startsWith(p) : pathname === p,
   );
 }
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   if (isPublicPath(pathname)) {
