@@ -34,6 +34,7 @@ export interface VisitPickupRecipient {
   recipientAddress: string;
   recipientAddressDetail: string | null;
   recipientZipCode: string;
+  shippingMemo: string | null;
 }
 
 /** 방문택배 다량 접수 작업 (1 예약 = N명 수령인) */

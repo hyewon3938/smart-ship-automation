@@ -4,7 +4,10 @@ import { bookOrders, getOrdersByIds } from "@/lib/orders";
 import { groupOrdersByOrderId } from "@/lib/groupOrders";
 import { enqueueVisitPickup } from "@/lib/gs-delivery/worker";
 
-import type { VisitPickupRecipient, VisitPickupTask } from "@/lib/gs-delivery/types";
+import type {
+  VisitPickupRecipient,
+  VisitPickupTask,
+} from "@/lib/gs-delivery/types";
 
 const MIN_VISIT_PICKUP_COUNT = 2;
 
@@ -15,7 +18,7 @@ export async function POST(request: NextRequest) {
     if (!Array.isArray(orderIds) || orderIds.length === 0) {
       return NextResponse.json(
         { error: "예약할 주문 ID 목록이 필요합니다" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -25,8 +28,10 @@ export async function POST(request: NextRequest) {
 
     if (groups.length < MIN_VISIT_PICKUP_COUNT) {
       return NextResponse.json(
-        { error: `방문택배는 최소 ${MIN_VISIT_PICKUP_COUNT}건 이상 선택해야 합니다 (현재 ${groups.length}건)` },
-        { status: 400 }
+        {
+          error: `방문택배는 최소 ${MIN_VISIT_PICKUP_COUNT}건 이상 선택해야 합니다 (현재 ${groups.length}건)`,
+        },
+        { status: 400 },
       );
     }
 
@@ -42,12 +47,13 @@ export async function POST(request: NextRequest) {
       recipientAddress: group.recipientAddress,
       recipientAddressDetail: group.recipientAddressDetail,
       recipientZipCode: group.recipientZipCode,
+      shippingMemo: group.shippingMemo,
     }));
 
     // 4. 물품 가액: 첫 번째 그룹의 합계 (택배 1건 기준)
     const unitPrice = groups[0].orders.reduce(
       (sum, o) => sum + (o.totalPrice ?? 0),
-      0
+      0,
     );
 
     const task: VisitPickupTask = {
