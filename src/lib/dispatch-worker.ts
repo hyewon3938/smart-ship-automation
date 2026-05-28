@@ -1,10 +1,13 @@
 import { scrapeTrackingNumbers } from "@/lib/gs-delivery/scrape-tracking";
+import { scrapeVisitPickup } from "@/lib/gs-delivery/scrape-visit-pickup";
 import { maskId } from "@/lib/log-mask";
 import { dispatchOrders, DELIVERY_COMPANY_CODES } from "@/lib/naver/dispatch";
 import { fetchDeliveryStatuses } from "@/lib/naver/orders";
 import {
   addBookingLog,
+  applyVisitDispatchInfo,
   getBookedOrderGroups,
+  getBookingVisitPickupGroups,
   getUncheckedDispatchedOrders,
   updateDeliveryStatus,
   updateDispatchStatus,
@@ -27,7 +30,7 @@ const SCRAPE_END_HOUR = 18; // 오후 6시
 function isWithinScrapeWindow(): boolean {
   const now = new Date();
   const kstHour = new Date(
-    now.toLocaleString("en-US", { timeZone: "Asia/Seoul" })
+    now.toLocaleString("en-US", { timeZone: "Asia/Seoul" }),
   ).getHours();
   return kstHour >= SCRAPE_START_HOUR && kstHour < SCRAPE_END_HOUR;
 }
@@ -75,10 +78,41 @@ export async function checkAndDispatch(): Promise<CheckAndDispatchResult> {
   }
   isRunning = true;
 
-  const result: CheckAndDispatchResult = { tracked: 0, dispatched: 0, errors: [] };
+  const result: CheckAndDispatchResult = {
+    tracked: 0,
+    dispatched: 0,
+    errors: [],
+  };
 
   try {
-    // 1. booked 상태 주문 그룹 조회
+    // 0. 방문택배 매칭 (ADR-0001) — booking + visit 그룹을 GS 예약list에서 찾아 booked 전환.
+    //    booked로 전환된 그룹은 1단계의 getBookedOrderGroups 조회에 자연스럽게 포함되어
+    //    같은 폴링 사이클에서 발송처리까지 완료된다.
+    if (isWithinScrapeWindow()) {
+      const visitGroups = getBookingVisitPickupGroups();
+      if (visitGroups.length > 0) {
+        try {
+          const visitInfos = await scrapeVisitPickup([]);
+          const { matched, unmatched, reservations } =
+            applyVisitDispatchInfo(visitInfos);
+          if (matched > 0 || unmatched > 0) {
+            console.log(
+              `[dispatch-worker] 방문택배 매칭 — 성공 ${matched}건, 보류 ${unmatched}건` +
+                (reservations.length > 0
+                  ? ` (예약: ${reservations.map(maskId).join(", ")})`
+                  : ""),
+            );
+          }
+          result.tracked += matched;
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : "알 수 없는 오류";
+          console.warn(`[dispatch-worker] ⚠️ 방문택배 스크래핑 실패 — ${msg}`);
+          result.errors.push(msg);
+        }
+      }
+    }
+
+    // 1. booked 상태 주문 그룹 조회 (방금 매칭된 방문택배 포함)
     const bookedGroups = getBookedOrderGroups();
 
     if (bookedGroups.length > 0) {
@@ -96,7 +130,7 @@ export async function checkAndDispatch(): Promise<CheckAndDispatchResult> {
             if (!tr.trackingNo) continue;
 
             const group = bookedGroups.find(
-              (g) => g.bookingReservationNo === tr.reservationNo
+              (g) => g.bookingReservationNo === tr.reservationNo,
             );
             if (!group) continue;
 
@@ -107,11 +141,11 @@ export async function checkAndDispatch(): Promise<CheckAndDispatchResult> {
             addBookingLog(
               group.firstDbId,
               "tracking",
-              `운송장번호 감지: ${tr.trackingNo}`
+              `운송장번호 감지: ${tr.trackingNo}`,
             );
             result.tracked++;
             console.log(
-              `[dispatch-worker] 운송장 감지 — 주문: ${maskId(group.orderId)}, 운송장: ${maskId(tr.trackingNo)}`
+              `[dispatch-worker] 운송장 감지 — 주문: ${maskId(group.orderId)}, 운송장: ${maskId(tr.trackingNo)}`,
             );
           }
         } catch (err) {
@@ -129,7 +163,7 @@ export async function checkAndDispatch(): Promise<CheckAndDispatchResult> {
         const pendingDispatch = freshGroups.filter(
           (g) =>
             g.trackingNumber &&
-            (!g.dispatchStatus || g.dispatchStatus === "pending_dispatch")
+            (!g.dispatchStatus || g.dispatchStatus === "pending_dispatch"),
         );
 
         for (const group of pendingDispatch) {
@@ -150,11 +184,11 @@ export async function checkAndDispatch(): Promise<CheckAndDispatchResult> {
               addBookingLog(
                 group.firstDbId,
                 "dispatch",
-                `네이버 발송처리 완료: ${group.trackingNumber}`
+                `네이버 발송처리 완료: ${group.trackingNumber}`,
               );
               result.dispatched++;
               console.log(
-                `[dispatch-worker] ✅ 발송처리 완료 — 주문: ${maskId(group.orderId)}`
+                `[dispatch-worker] ✅ 발송처리 완료 — 주문: ${maskId(group.orderId)}`,
               );
             } else {
               updateDispatchStatus(group.orderId, "dispatch_failed");
@@ -162,19 +196,18 @@ export async function checkAndDispatch(): Promise<CheckAndDispatchResult> {
               addBookingLog(
                 group.firstDbId,
                 "error",
-                `발송처리 실패: ${errMsg}`
+                `발송처리 실패: ${errMsg}`,
               );
               result.errors.push(`${group.orderId}: ${errMsg}`);
               console.error(
-                `[dispatch-worker] ❌ 발송처리 실패 — ${maskId(group.orderId)}: ${errMsg}`
+                `[dispatch-worker] ❌ 발송처리 실패 — ${maskId(group.orderId)}: ${errMsg}`,
               );
             }
           } catch (err) {
-            const msg =
-              err instanceof Error ? err.message : "알 수 없는 오류";
+            const msg = err instanceof Error ? err.message : "알 수 없는 오류";
             result.errors.push(`${group.orderId}: ${msg}`);
             console.error(
-              `[dispatch-worker] ❌ 예외 — ${maskId(group.orderId)}: ${msg}`
+              `[dispatch-worker] ❌ 예외 — ${maskId(group.orderId)}: ${msg}`,
             );
           }
         }
@@ -186,7 +219,7 @@ export async function checkAndDispatch(): Promise<CheckAndDispatchResult> {
       const unchecked = getUncheckedDispatchedOrders();
       if (unchecked.length > 0) {
         const deliveryInfos = await fetchDeliveryStatuses(
-          unchecked.map((o) => o.productOrderId)
+          unchecked.map((o) => o.productOrderId),
         );
         for (const order of unchecked) {
           const info = deliveryInfos.get(order.productOrderId);
@@ -194,10 +227,10 @@ export async function checkAndDispatch(): Promise<CheckAndDispatchResult> {
             updateDeliveryStatus(
               order.productOrderId,
               info.status,
-              info.pickupDate
+              info.pickupDate,
             );
             console.log(
-              `[dispatch-worker] 📦 ${info.status === "delivering" ? "집화 확인" : "배송 완료"} — 주문: ${maskId(order.orderId)}`
+              `[dispatch-worker] 📦 ${info.status === "delivering" ? "집화 확인" : "배송 완료"} — 주문: ${maskId(order.orderId)}`,
             );
           }
         }

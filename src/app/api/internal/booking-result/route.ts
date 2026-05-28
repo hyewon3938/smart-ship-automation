@@ -22,7 +22,7 @@ const orderItemSchema = z.object({
   recipientZipCode: z.string(),
   shippingMemo: z.string().nullable(),
   isNextDayEligible: z.boolean(),
-  selectedDeliveryType: z.enum(["domestic", "nextDay"]),
+  selectedDeliveryType: z.enum(["domestic", "nextDay", "visit"]),
 });
 
 const bodySchema = z.object({
