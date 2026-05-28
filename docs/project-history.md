@@ -323,3 +323,25 @@
 - `serverExternalPackages`의 native 모듈(`better-sqlite3`, `playwright`)은 번들 제외 유지 — 플랫폼별 바이너리 처리 단순화
 - PM2 `cwd`는 프로젝트 루트 유지 (로그 경로 불변), Node는 server.js에서 standalone 폴더로 chdir
 - deploy-fast.sh는 `.env.local`의 `DEPLOY_*` 변수만 선택 로드 → 다른 변수 값의 공백 이슈 회피
+
+## 2026-05-28 — PR #60: 방문택배 자동 발송처리 (#59)
+
+### 폴링 합류 + 마스킹 매칭
+- 일반택배와 달리 방문택배는 사용자가 직접 결제하므로 시스템이 결제 완료 시점을 자동
+  인지하지 못했다 — 폼 입력 후 `status=booking`에서 영구히 멈춰 운송장 매칭 불가
+- 기존 `dispatch-worker` 폴링(2분 간격, 11\~18시 KST)에 방문택배 매칭 단계를 합류
+- GS 예약list에서 "구분=방문" 행을 찾고 상세페이지의 마스킹된 수신정보를
+  **(우편번호 + 전화 끝 4자리)** 키로 로컬 그룹과 매칭 → `booked` 전환 → 같은 폴링에서
+  일반 발송처리 흐름 합류
+
+### 기술적 결정 (ADR-0001)
+- **트리거 = 폴링만**: 방문택배 빈도 낮음 + 일반택배 폴링 패턴 이미 검증 → 별도 트리거 없이 합류
+- **매칭 키 = (우편번호, 전화 끝 4자리)**: 한 방문택배 내 N명 수령인에서 사실상 unique →
+  Cloudflare Turnstile 캡챠가 필요한 "숨김 해제" 자동화 회피
+- `recoverStuckBookings`는 visit 그룹 제외 — booking 상태가 정상이므로 서버 재시작 시 보존
+- 결제 페이지 자동화는 사용자 본인 책임으로 유지 (PG/카드 입력은 자동화 대상 아님)
+
+### 산출물
+- 신규 모듈: `src/lib/gs-delivery/scrape-visit-pickup.ts` (예약list 필터 + 상세페이지 마스킹 파서)
+- 단위 테스트 9건 (HTML fixture 기반)
+- ADR-0001 영구 결정 기록
