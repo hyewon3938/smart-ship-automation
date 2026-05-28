@@ -51,38 +51,42 @@ export async function POST(request: NextRequest) {
     if (!parsed.success) {
       return NextResponse.json(
         { error: "요청 형식이 올바르지 않습니다" },
-        { status: 400 }
+        { status: 400 },
       );
     }
     const body = parsed.data;
 
+    let allDispatched = false;
     if (body.status === "booked") {
       if (body.orderItems && body.orderItems.length > 0) {
-        upsertOrdersFromLocal(
+        const result = upsertOrdersFromLocal(
           body.orderId,
           body.orderItems,
           body.bookingResult,
-          body.bookingReservationNo
+          body.bookingReservationNo,
         );
+        allDispatched = result.allDispatched;
       } else {
         updateOrdersByOrderId(
           body.orderId,
           "booked",
           body.bookingResult,
-          body.bookingReservationNo
+          body.bookingReservationNo,
         );
       }
-      addBookingLogByOrderId(
-        body.orderId,
-        "complete",
-        `예약 완료 (로컬 동기화)${body.bookingReservationNo ? `: ${body.bookingReservationNo}` : ""}`
-      );
+      if (!allDispatched) {
+        addBookingLogByOrderId(
+          body.orderId,
+          "complete",
+          `예약 완료 (로컬 동기화)${body.bookingReservationNo ? `: ${body.bookingReservationNo}` : ""}`,
+        );
+      }
     } else if (body.status === "failed") {
       updateOrdersByOrderId(body.orderId, "failed", body.error);
       addBookingLogByOrderId(
         body.orderId,
         "error",
-        `예약 실패 (로컬 동기화): ${body.error ?? "알 수 없는 오류"}`
+        `예약 실패 (로컬 동기화): ${body.error ?? "알 수 없는 오류"}`,
       );
     }
 
@@ -91,15 +95,20 @@ export async function POST(request: NextRequest) {
         (body.bookingReservationNo
           ? ` (예약번호: ${body.bookingReservationNo})`
           : "") +
-        (body.orderItems ? ` [upsert ${body.orderItems.length}건]` : "")
+        (body.orderItems ? ` [upsert ${body.orderItems.length}건]` : "") +
+        (allDispatched ? " [전부 발송완료 — 로컬에 알림]" : ""),
     );
 
-    return NextResponse.json({ message: "동기화 완료", orderId: body.orderId });
+    return NextResponse.json({
+      message: "동기화 완료",
+      orderId: body.orderId,
+      allDispatched,
+    });
   } catch (error) {
     console.error("[internal/booking-result] 처리 실패:", error);
     return NextResponse.json(
       { error: "예약 결과 동기화 중 오류가 발생했습니다" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

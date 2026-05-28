@@ -12,16 +12,16 @@ import type {
   OrderStatus,
 } from "@/types";
 
-/** 최근 2주 기준 날짜 생성 */
-function twoWeeksAgo(): string {
+/** 최근 1주 기준 날짜 생성 */
+function oneWeekAgo(): string {
   const d = new Date();
-  d.setDate(d.getDate() - 14);
+  d.setDate(d.getDate() - 7);
   return d.toISOString();
 }
 
-/** 전체 주문 목록 조회 (최신순, 최근 2주만) */
+/** 전체 주문 목록 조회 (최신순, 최근 1주만 — dispatched 포함) */
 export function getOrders(status?: string) {
-  const since = twoWeeksAgo();
+  const since = oneWeekAgo();
 
   if (status) {
     return db
@@ -289,7 +289,12 @@ export function upsertOrdersFromLocal(
   }>,
   bookingResult?: string,
   bookingReservationNo?: string,
-): void {
+): {
+  inserted: number;
+  updated: number;
+  skippedDispatched: number;
+  allDispatched: boolean;
+} {
   const now = new Date().toISOString();
 
   // 기존 주문 확인 (status 포함 — dispatched 보호용)
@@ -307,6 +312,8 @@ export function upsertOrdersFromLocal(
   );
 
   let skippedDispatched = 0;
+  let inserted = 0;
+  let updated = 0;
   for (const item of orderItems) {
     const existingStatus = existingStatusByProductOrderId.get(
       item.productOrderId,
@@ -328,6 +335,7 @@ export function upsertOrdersFromLocal(
         })
         .where(eq(orders.productOrderId, item.productOrderId))
         .run();
+      updated++;
     } else {
       // 없으면 INSERT
       db.insert(orders)
@@ -354,6 +362,7 @@ export function upsertOrdersFromLocal(
           updatedAt: now,
         })
         .run();
+      inserted++;
     }
   }
 
@@ -362,6 +371,11 @@ export function upsertOrdersFromLocal(
     `[orders] upsert 완료: ${maskId(orderId)} — 기존 ${existingCount}건, 신규 ${orderItems.length - existingCount}건` +
       (skippedDispatched > 0 ? `, 발송완료 보호 ${skippedDispatched}건` : ""),
   );
+
+  // 모든 orderItems 가 dispatched 라서 스킵된 경우 — 로컬에 알려서 로컬 DB 도 dispatched 로 정리하게 함
+  const allDispatched =
+    orderItems.length > 0 && skippedDispatched === orderItems.length;
+  return { inserted, updated, skippedDispatched, allDispatched };
 }
 
 /** 운송장번호 업데이트 + pending_dispatch 마킹 (orderId 기준 일괄) */
@@ -477,6 +491,31 @@ export function updateDeliveryStatus(
     })
     .where(eq(orders.productOrderId, productOrderId))
     .run();
+}
+
+/**
+ * orderId 기준 전체 주문 그룹을 dispatched 상태로 마킹.
+ * 로컬 → 서버 동기화 응답에서 "서버가 이미 dispatched 됐다" 라고 알려줬을 때
+ * 로컬 DB 도 dispatched 로 정리하여 재동기화 루프를 끊는다.
+ */
+export function markOrderGroupAsDispatched(orderId: string): number {
+  const now = new Date().toISOString();
+  const result = db
+    .update(orders)
+    .set({
+      status: "dispatched" as OrderStatus,
+      dispatchStatus: "dispatched" as DispatchStatus,
+      dispatchedAt: now,
+      updatedAt: now,
+    })
+    .where(
+      and(
+        eq(orders.orderId, orderId),
+        ne(orders.status, "dispatched" as OrderStatus),
+      ),
+    )
+    .run();
+  return result.changes ?? 0;
 }
 
 /**
