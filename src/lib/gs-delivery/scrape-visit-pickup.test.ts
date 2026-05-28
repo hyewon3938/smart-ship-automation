@@ -166,6 +166,25 @@ const DETAIL_HTML_MASK_VARIANT = `
 </div>
 `;
 
+// 마스킹 해제 상태: GS가 마스킹 풀린 unmasked 전화번호를 응답하는 경우
+// (사용자가 "숨김 해제" 버튼을 눌렀거나 세션 상태에 따라 발생)
+const DETAIL_HTML_UNMASKED = `
+<div class="delMInfo">
+  <p class="txt2"><span>[06236]</span> 서울 강남구 테헤란로 123</p>
+  <p class="txt2 phone">010-1234-5678</p>
+  <p class="txt2"><a class="num">698200000111</a></p>
+</div>
+`;
+
+// 무하이픈 전화번호 (방어적 케이스)
+const DETAIL_HTML_NO_HYPHEN = `
+<div class="delMInfo">
+  <p class="txt2"><span>[47180]</span> 부산</p>
+  <p class="txt2 phone">01012349999</p>
+  <p class="txt2"><a class="num">222333444555</a></p>
+</div>
+`;
+
 // 우편번호 누락 블록 → skip
 const DETAIL_HTML_MISSING_ZIP = `
 <div class="delMInfo">
@@ -232,6 +251,20 @@ describe("parseVisitDetailPage", () => {
     const result = parseVisitDetailPage(DETAIL_HTML_MASK_VARIANT);
     expect(result).toEqual([
       { zipCode: "12345", phoneLast4: "7890", trackingNo: "123456789012" },
+    ]);
+  });
+
+  it("마스킹 해제(unmasked) 상태의 전화번호도 끝 4자리를 추출한다", () => {
+    const result = parseVisitDetailPage(DETAIL_HTML_UNMASKED);
+    expect(result).toEqual([
+      { zipCode: "06236", phoneLast4: "5678", trackingNo: "698200000111" },
+    ]);
+  });
+
+  it("하이픈 없는 전화번호도 끝 4자리를 추출한다", () => {
+    const result = parseVisitDetailPage(DETAIL_HTML_NO_HYPHEN);
+    expect(result).toEqual([
+      { zipCode: "47180", phoneLast4: "9999", trackingNo: "222333444555" },
     ]);
   });
 

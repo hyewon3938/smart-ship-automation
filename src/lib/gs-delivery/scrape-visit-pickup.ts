@@ -112,15 +112,25 @@ export function parseVisitDetailPage(html: string): VisitRecipientLine[] {
     const block = html.slice(start, end);
 
     const zipMatch = block.match(/\[(\d{5})\]/);
-    const phoneMatch = block.match(/010-\*+-(\d{4})/);
+    // phone 영역(<p class="... phone ...">)에서 끝 4자리 추출.
+    // masked("010-****-5678") / unmasked("010-1234-5678") / 무하이픈 모두 처리.
+    const phoneSection = block.match(
+      /<p[^>]*class="[^"]*\bphone\b[^"]*"[^>]*>([\s\S]*?)<\/p>/,
+    );
+    let phoneLast4: string | null = null;
+    if (phoneSection) {
+      const digits = phoneSection[1].replace(/[^\d]/g, "");
+      const tail = digits.match(/(\d{4})$/);
+      if (tail) phoneLast4 = tail[1];
+    }
     const trackingMatch = block.match(
       /<a[^>]*class="num"[^>]*>\s*(\d{8,})\s*<\/a>/,
     );
 
-    if (zipMatch && phoneMatch && trackingMatch) {
+    if (zipMatch && phoneLast4 && trackingMatch) {
       lines.push({
         zipCode: zipMatch[1],
-        phoneLast4: phoneMatch[1],
+        phoneLast4,
         trackingNo: trackingMatch[1],
       });
     }
