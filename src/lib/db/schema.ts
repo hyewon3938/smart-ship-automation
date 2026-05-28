@@ -24,7 +24,7 @@ export const orders = sqliteTable("orders", {
     .notNull()
     .default(false),
   selectedDeliveryType: text("selected_delivery_type", {
-    enum: ["domestic", "nextDay"],
+    enum: ["domestic", "nextDay", "visit"],
   })
     .notNull()
     .default("domestic"),

@@ -46,3 +46,26 @@ export interface VisitPickupTask {
   /** 물품 가액 (택배 1건 기준, 원 단위) */
   unitPrice: number;
 }
+
+/**
+ * 방문택배 상세페이지에서 추출한 수령인-운송장 매핑 1건.
+ *
+ * 매칭 키는 (zipCode, phoneLast4) 튜플 — 상세페이지 수신정보가 마스킹되어 있어도
+ * 한 방문택배 내 N명 수령인 안에서는 충돌 확률이 사실상 0.
+ */
+export interface VisitRecipientLine {
+  /** 우편번호 (5자리, 상세페이지의 `[XXXXX]` 추출) */
+  zipCode: string;
+  /** 전화번호 끝 4자리 (`010-****-NNNN` 마스킹 형식에서 추출) */
+  phoneLast4: string;
+  /** 운송장번호 (상세페이지에서는 unmasked로 노출) */
+  trackingNo: string;
+}
+
+/** GS 예약list의 방문 행 1건 + 상세페이지 파싱 결과 */
+export interface VisitDispatchInfo {
+  /** GS 예약번호 (예: "12148215251") */
+  reservationNo: string;
+  /** 상세페이지의 수신정보 블록들 (1 예약 = N명 수령인) */
+  recipients: VisitRecipientLine[];
+}

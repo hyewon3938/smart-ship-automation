@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { bookOrders, getOrdersByIds } from "@/lib/orders";
+import { bookOrders, getOrdersByIds, markAsVisitPickup } from "@/lib/orders";
 import { groupOrdersByOrderId } from "@/lib/groupOrders";
 import { enqueueVisitPickup } from "@/lib/gs-delivery/worker";
 
@@ -35,8 +35,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 2. 검증 통과 후 상태 → booking
+    // 2. 검증 통과 후 상태 → booking + 방문택배 마킹
+    //    (이후 dispatch-worker 폴링이 selectedDeliveryType=visit 그룹을 추적)
     bookOrders(orderIds);
+    markAsVisitPickup(orderIds);
 
     // 3. 수령인 목록 생성
     const recipients: VisitPickupRecipient[] = groups.map((group) => ({

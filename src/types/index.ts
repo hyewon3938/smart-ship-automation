@@ -6,10 +6,19 @@ import type { orders } from "@/lib/db/schema";
 export type Order = InferSelectModel<typeof orders>;
 
 /** 주문 상태 */
-export type OrderStatus = "pending" | "booking" | "booked" | "failed" | "skipped" | "dispatched";
+export type OrderStatus =
+  | "pending"
+  | "booking"
+  | "booked"
+  | "failed"
+  | "skipped"
+  | "dispatched";
 
 /** 발송처리 상태 */
-export type DispatchStatus = "pending_dispatch" | "dispatched" | "dispatch_failed";
+export type DispatchStatus =
+  | "pending_dispatch"
+  | "dispatched"
+  | "dispatch_failed";
 
 /** 서버 대시보드 필터 (발송 흐름 기준) */
 export type ServerFilter = "waiting" | "dispatched" | "dispatch_failed";
@@ -18,7 +27,7 @@ export type ServerFilter = "waiting" | "dispatched" | "dispatch_failed";
 export type DeliveryTrackingStatus = "delivering" | "delivered";
 
 /** 택배 유형 */
-export type DeliveryType = "domestic" | "nextDay";
+export type DeliveryType = "domestic" | "nextDay" | "visit";
 
 /** orderId 기준 주문 그룹 (같은 배송지 묶음) */
 export interface OrderGroup {
