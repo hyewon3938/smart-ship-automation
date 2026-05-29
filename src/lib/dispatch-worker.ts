@@ -8,6 +8,7 @@ import {
   applyVisitDispatchInfo,
   getBookedOrderGroups,
   getBookingVisitPickupGroups,
+  getMatchedVisitReservationNos,
   getUncheckedDispatchedOrders,
   updateDeliveryStatus,
   updateDispatchStatus,
@@ -25,6 +26,46 @@ let isRunning = false;
 /** 운송장 스크래핑 허용 시간대 (KST) */
 const SCRAPE_START_HOUR = 11; // 오전 11시
 const SCRAPE_END_HOUR = 18; // 오후 6시
+
+/**
+ * 방문택배 GS 상세페이지 재요청 throttle.
+ *
+ * PR #60 직후 dispatch-worker가 매 폴링마다 `scrapeVisitPickup([])` 호출 →
+ * GS list 방문 행 N건 전체의 detail POST를 매번 다시 요청 → GS가 봇 트래픽으로
+ * 인식해 세션을 빠르게 invalidate (2~3시간 안에 만료) 시키는 문제 발생.
+ *
+ * Fix: 한 번 detail fetch한 GS 예약번호는 TTL 동안 다시 fetch하지 않는다.
+ *   - DB 기반 known: getMatchedVisitReservationNos() — 이미 매칭 완료된 거
+ *   - 메모리 기반 recent: 매칭 실패했어도 같은 사이클에서 반복 fetch 방지
+ *
+ * 메모리 캐시는 PM2 재시작 시 비어 폴링 윈도우(11~18 KST) 안에선 자동으로
+ * 자기복구 (다음 사이클부터 다시 채워짐).
+ */
+const recentlyAttemptedVisits = new Map<string, number>();
+const VISIT_DETAIL_RETRY_INTERVAL_MS = 60 * 60 * 1000; // 60분
+
+function getKnownVisitReservationNos(): string[] {
+  const matched = getMatchedVisitReservationNos();
+  const now = Date.now();
+  const recent: string[] = [];
+  for (const [no, ts] of recentlyAttemptedVisits.entries()) {
+    if (now - ts > VISIT_DETAIL_RETRY_INTERVAL_MS) {
+      recentlyAttemptedVisits.delete(no);
+    } else {
+      recent.push(no);
+    }
+  }
+  return Array.from(new Set([...matched, ...recent]));
+}
+
+function markVisitReservationAttempted(reservationNo: string): void {
+  recentlyAttemptedVisits.set(reservationNo, Date.now());
+}
+
+/** 테스트용 — 캐시 초기화 */
+export function _resetVisitAttemptCacheForTest(): void {
+  recentlyAttemptedVisits.clear();
+}
 
 /** 현재 시간이 스크래핑 허용 시간대인지 확인 */
 function isWithinScrapeWindow(): boolean {
@@ -92,7 +133,14 @@ export async function checkAndDispatch(): Promise<CheckAndDispatchResult> {
       const visitGroups = getBookingVisitPickupGroups();
       if (visitGroups.length > 0) {
         try {
-          const visitInfos = await scrapeVisitPickup([]);
+          // 이미 처리/시도한 예약은 detail fetch에서 제외 → GS 봇 감지 회피
+          const knownNos = getKnownVisitReservationNos();
+          const visitInfos = await scrapeVisitPickup(knownNos);
+          // 새로 detail fetch한 예약(매칭 성공/실패 무관)을 캐시에 기록 →
+          // 다음 폴링부터 60분 동안 재요청 안 함.
+          for (const info of visitInfos) {
+            markVisitReservationAttempted(info.reservationNo);
+          }
           const { matched, unmatched, reservations } =
             applyVisitDispatchInfo(visitInfos);
           if (matched > 0 || unmatched > 0) {

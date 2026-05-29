@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, inArray, ne } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNotNull, ne } from "drizzle-orm";
 
 import { db } from "@/lib/db";
 import { bookingLogs, orders } from "@/lib/db/schema";
@@ -694,6 +694,31 @@ export function applyVisitDispatchInfo(infos: VisitDispatchInfo[]): {
     unmatched,
     reservations: Array.from(matchedReservations),
   };
+}
+
+/**
+ * 방문택배 타입 + 이미 GS 예약번호가 매핑된(=매칭 완료) 주문의 reservationNo 집합.
+ *
+ * 폴링이 scrapeVisitPickup을 호출할 때 이 집합을 knownReservationNos로 넘기면,
+ * 이미 매칭 완료된 예약의 GS 상세페이지를 다시 fetch하지 않는다.
+ * (PR #60 이후 dispatch-worker가 빈 배열로 호출 → GS 봇 감지 트리거 → 세션 조기 만료
+ *   되던 문제 해결용 헬퍼. 같은 폴링 사이클에서 반복 fetch 방지가 핵심.)
+ */
+export function getMatchedVisitReservationNos(): string[] {
+  const rows = db
+    .select({ no: orders.bookingReservationNo })
+    .from(orders)
+    .where(
+      and(
+        eq(orders.selectedDeliveryType, "visit"),
+        isNotNull(orders.bookingReservationNo),
+      ),
+    )
+    .all();
+
+  return Array.from(
+    new Set(rows.map((r) => r.no).filter((n): n is string => !!n)),
+  );
 }
 
 /**
