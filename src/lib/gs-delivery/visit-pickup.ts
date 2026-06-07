@@ -2,6 +2,12 @@ import fs from "fs";
 import path from "path";
 
 import {
+  getProductTypeCode,
+  getSenderAddressBookName,
+  getVisitReservationName,
+} from "@/lib/settings";
+
+import {
   GS_URLS,
   DOMESTIC_SELECTORS,
   VISIT_PICKUP_SELECTORS as VP,
@@ -218,20 +224,21 @@ export async function bookVisitPickup(
 
     const S = DOMESTIC_SELECTORS;
 
-    // 품목선택: 잡화/서적 (08)
-    await page.locator(S.PRODUCT_SELECT).selectOption("08");
-    console.log(`[visit-pickup]   품목선택: 잡화/서적 (08) ✓`);
+    // 품목선택 (기본 08 잡화/서적, 설정값 사용)
+    const productCode = getProductTypeCode();
+    await page.locator(S.PRODUCT_SELECT).selectOption(productCode);
+    console.log(`[visit-pickup]   품목선택: ${productCode} ✓`);
     await page.waitForTimeout(ACTION_DELAY_MS);
 
-    // 동의 체크박스
+    // 동의 체크박스 (품목코드에 종속된 #exemption_agree{code})
     await page.waitForTimeout(ACTION_DELAY_MS * 2);
-    await page.evaluate(() => {
+    await page.evaluate((code) => {
       const cb = document.querySelector(
-        "#exemption_agree08",
+        `#exemption_agree${code}`,
       ) as HTMLInputElement | null;
       if (cb && !cb.checked) {
         const label = document.querySelector(
-          "label[for='exemption_agree08']",
+          `label[for='exemption_agree${code}']`,
         ) as HTMLElement | null;
         if (label) {
           label.click();
@@ -244,7 +251,7 @@ export async function bookVisitPickup(
         "#exemption_agree",
       ) as HTMLInputElement | null;
       if (hidden) hidden.value = "Y";
-    });
+    }, productCode);
     console.log(`[visit-pickup]   동의 체크 ✓`);
     await page.waitForTimeout(ACTION_DELAY_MS);
 
@@ -253,9 +260,10 @@ export async function bookVisitPickup(
     await page.locator(S.PRODUCT_PRICE).fill(String(priceInManWon));
     console.log(`[visit-pickup]   물품 가액: ${priceInManWon}만원 ✓`);
 
-    // 예약명: "리뷰어 발송" (고정)
-    await page.locator(S.RESERVATION_NAME).fill("리뷰어 발송");
-    console.log(`[visit-pickup]   예약명: 리뷰어 발송 ✓`);
+    // 예약명 (설정값, 기본 "방문택배 발송")
+    const reservationName = getVisitReservationName();
+    await page.locator(S.RESERVATION_NAME).fill(reservationName);
+    console.log(`[visit-pickup]   예약명: ${reservationName} ✓`);
 
     await page.waitForTimeout(ACTION_DELAY_MS);
     console.log(`[visit-pickup] ${currentStep} ✓`);
@@ -335,7 +343,7 @@ export async function bookVisitPickup(
     console.log(`[visit-pickup] ${currentStep} ✓`);
     await page.waitForTimeout(ACTION_DELAY_MS);
 
-    // ── 6. 보내는 분: 주소록에서 "리커밋" 선택 ──
+    // ── 6. 보내는 분: 주소록에서 설정한 발송인 이름 선택 ──
     currentStep = "6. 보내는 분 주소록 가져오기";
     console.log(`[visit-pickup] ${currentStep}`);
     await selectSenderFromAddressBook(page, S);
@@ -424,13 +432,20 @@ export async function bookVisitPickup(
 }
 
 /**
- * 보내는 분 주소록에서 "리커밋" 선택.
+ * 보내는 분 주소록에서 설정한 발송인 이름 선택.
  * automation.ts의 동일 로직 재사용.
  */
 async function selectSenderFromAddressBook(
   page: Page,
   S: typeof DOMESTIC_SELECTORS,
 ): Promise<void> {
+  const senderAddrName = getSenderAddressBookName();
+  if (!senderAddrName) {
+    throw new Error(
+      "발송인 이름이 설정되지 않았습니다. 설정 > GS택배 > '주소록 발송인 이름'을 입력해주세요.",
+    );
+  }
+
   // "나의 주소록" 버튼 클릭
   const addrBtnVisible = await page
     .locator(S.SENDER_ADDRESSBOOK_BTN)
@@ -457,17 +472,17 @@ async function selectSenderFromAddressBook(
   console.log(`[visit-pickup]   "나의 주소록" 클릭 ✓`);
   await page.waitForTimeout(ACTION_DELAY_MS * 4);
 
-  // 주소록에서 "리커밋" 항목 선택
-  const addrSelected = await page.evaluate(() => {
+  // 주소록에서 설정한 발송인 이름 항목 선택
+  const addrSelected = await page.evaluate((targetName) => {
     const layer = document.querySelector("#layer_myAddrList") || document.body;
     const rows = layer.querySelectorAll("tr, li, .list, [class*='addr']");
 
     for (const row of Array.from(rows)) {
-      if (row.textContent?.includes("리커밋")) {
+      if (row.textContent?.includes(targetName)) {
         const btn = row.querySelector("a, button") as HTMLElement | null;
         if (btn) {
           btn.click();
-          return "리커밋";
+          return targetName;
         }
       }
     }
@@ -491,7 +506,7 @@ async function selectSenderFromAddressBook(
       }
     }
     return null;
-  });
+  }, senderAddrName);
   if (addrSelected) {
     console.log(`[visit-pickup]   주소록 "${addrSelected}" 선택 ✓`);
   }
@@ -507,9 +522,9 @@ async function selectSenderFromAddressBook(
     .locator("#real_sender_name")
     .inputValue({ timeout: 5000 })
     .catch(() => "");
-  if (!senderName.includes("리커밋")) {
+  if (!senderName.includes(senderAddrName)) {
     console.warn(
-      `[visit-pickup]   ⚠️ 보내는 분이 "${senderName}" — "리커밋"이 아님! 재시도...`,
+      `[visit-pickup]   ⚠️ 보내는 분이 "${senderName}" — "${senderAddrName}"이(가) 아님! 재시도...`,
     );
 
     // 재시도: 주소록 다시 열기
@@ -533,14 +548,14 @@ async function selectSenderFromAddressBook(
     }
     await page.waitForTimeout(ACTION_DELAY_MS * 4);
 
-    await page.evaluate(() => {
+    await page.evaluate((targetName) => {
       const layer =
         document.querySelector("#layer_myAddrList") || document.body;
       const allElements = layer.querySelectorAll("*");
       for (const el of Array.from(allElements)) {
         const htmlEl = el as HTMLElement;
         if (
-          htmlEl.textContent?.includes("리커밋") &&
+          htmlEl.textContent?.includes(targetName) &&
           (htmlEl.tagName === "TR" ||
             htmlEl.tagName === "LI" ||
             htmlEl.tagName === "DIV")
@@ -552,7 +567,7 @@ async function selectSenderFromAddressBook(
           }
         }
       }
-    });
+    }, senderAddrName);
     await page.waitForTimeout(ACTION_DELAY_MS * 2);
     await page
       .waitForLoadState("domcontentloaded", { timeout: 5000 })
@@ -562,13 +577,13 @@ async function selectSenderFromAddressBook(
       .locator("#real_sender_name")
       .inputValue({ timeout: 5000 })
       .catch(() => "");
-    if (!finalSenderName.includes("리커밋")) {
+    if (!finalSenderName.includes(senderAddrName)) {
       throw new Error(
-        `보내는 분이 "${finalSenderName}"(으)로 설정됨. 주소록에서 "리커밋"을 찾을 수 없습니다.`,
+        `보내는 분이 "${finalSenderName}"(으)로 설정됨. 주소록에서 "${senderAddrName}"을(를) 찾을 수 없습니다. 설정의 발송인 이름과 GS 주소록을 확인해주세요.`,
       );
     }
   }
-  console.log(`[visit-pickup]   보내는 분 확인: "리커밋" ✓`);
+  console.log(`[visit-pickup]   보내는 분 확인: "${senderAddrName}" ✓`);
 }
 
 /**

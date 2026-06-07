@@ -19,12 +19,18 @@ vi.mock("@/lib/db", () => {
 
   const chain = {
     from: () => chain,
-    where: (key: string) => { capturedKey = key; return chain; },
+    where: (key: string) => {
+      capturedKey = key;
+      return chain;
+    },
     get: () => {
       const value = store[capturedKey];
       return value !== undefined ? { key: capturedKey, value } : undefined;
     },
-    set: (vals: Record<string, string>) => { capturedValues = vals; return chain; },
+    set: (vals: Record<string, string>) => {
+      capturedValues = vals;
+      return chain;
+    },
     run: () => {
       if (capturedValues.value !== undefined) {
         store[capturedKey] = capturedValues.value;
@@ -135,12 +141,29 @@ describe("updateGsSettings 마스킹 값 유지", () => {
   });
 
   it("마스킹 값(****)이면 기존 password를 유지한다", () => {
-    updateGsSettings({ username: "user", password: "****word" });
+    updateGsSettings({
+      username: "user",
+      password: "****word",
+      senderName: "발송인",
+    });
     expect(getSetting("gs.password")).toBe("originalPassword");
   });
 
   it("새 값이면 password를 업데이트한다", () => {
-    updateGsSettings({ username: "user", password: "newPass" });
+    updateGsSettings({
+      username: "user",
+      password: "newPass",
+      senderName: "발송인",
+    });
     expect(getSetting("gs.password")).toBe("newPass");
+  });
+
+  it("senderName(주소록 발송인 이름)을 저장한다", () => {
+    updateGsSettings({
+      username: "user",
+      password: "****word",
+      senderName: "테스트발송인",
+    });
+    expect(getSetting("gs.senderName")).toBe("테스트발송인");
   });
 });

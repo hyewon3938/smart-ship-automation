@@ -44,7 +44,7 @@ export function BookingSettingsTab({ initial }: Props) {
       {
         onSuccess: () => toast.success("택배 기본값이 저장되었습니다."),
         onError: (err) => toast.error(err.message),
-      }
+      },
     );
   };
 
@@ -55,12 +55,18 @@ export function BookingSettingsTab({ initial }: Props) {
         <Select
           value={form.defaultProductType}
           onValueChange={(value) =>
-            setForm((prev) => ({ ...prev, defaultProductType: value ?? prev.defaultProductType }))
+            setForm((prev) => ({
+              ...prev,
+              defaultProductType: value ?? prev.defaultProductType,
+            }))
           }
         >
           <SelectTrigger id="booking-product-type">
             <SelectValue placeholder="물품 유형 선택">
-              {PRODUCT_TYPES.find((t) => t.value === form.defaultProductType)?.label}
+              {
+                PRODUCT_TYPES.find((t) => t.value === form.defaultProductType)
+                  ?.label
+              }
             </SelectValue>
           </SelectTrigger>
           <SelectContent>
@@ -98,7 +104,9 @@ export function BookingSettingsTab({ initial }: Props) {
         >
           <SelectTrigger id="booking-delivery-type">
             <SelectValue placeholder="택배 유형 선택">
-              {form.defaultDeliveryType === "domestic" ? "국내택배" : "내일배송"}
+              {form.defaultDeliveryType === "domestic"
+                ? "국내택배"
+                : "내일배송"}
             </SelectValue>
           </SelectTrigger>
           <SelectContent>
@@ -106,6 +114,23 @@ export function BookingSettingsTab({ initial }: Props) {
             <SelectItem value="nextDay">내일배송</SelectItem>
           </SelectContent>
         </Select>
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor="booking-visit-reservation-name">방문택배 예약명</Label>
+        <Input
+          id="booking-visit-reservation-name"
+          value={form.visitReservationName}
+          onChange={(e) =>
+            setForm((prev) => ({
+              ...prev,
+              visitReservationName: e.target.value,
+            }))
+          }
+          placeholder="방문택배 발송"
+        />
+        <p className="text-xs text-muted-foreground">
+          방문택배 예약 시 GS 예약 목록에 표시될 이름입니다.
+        </p>
       </div>
       <div className="pt-2">
         <Button onClick={handleSave} disabled={updateSettings.isPending}>

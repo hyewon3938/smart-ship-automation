@@ -75,7 +75,7 @@
   <rect x="490" y="30" width="380" height="44" rx="14" fill="#7c3aed"/>
   <rect x="490" y="60" width="380" height="14" fill="#7c3aed"/>
   <text x="508" y="58" fill="#fff" font-size="15" font-weight="700">☁️  Oracle Cloud VM (서버)</text>
-  <text x="788" y="58" fill="rgba(255,255,255,0.7)" font-size="10">ship.leecommit.kr</text>
+  <text x="788" y="58" fill="rgba(255,255,255,0.7)" font-size="10">ship.example.com</text>
 
   <!-- Next.js 프로덕션 -->
   <rect x="510" y="92" width="340" height="36" rx="8" fill="#f3e8ff" stroke="#c084fc" stroke-width="1"/>

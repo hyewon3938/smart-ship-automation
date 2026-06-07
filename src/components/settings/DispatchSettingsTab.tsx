@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { useUpdateDispatchSettings } from "@/hooks/useDispatch";
+import { SCRAPE_END_HOUR, SCRAPE_START_HOUR } from "@/lib/dispatch-window";
 import type { DispatchSettings } from "@/types";
 
 interface Props {
@@ -33,6 +34,14 @@ export function DispatchSettingsTab({ initial }: Props) {
           <p className="text-xs text-muted-foreground">
             운송장번호 감지 시 즉시 네이버 발송처리 (OFF = 수동 승인)
           </p>
+          <p className="text-xs text-muted-foreground">
+            예약 후 매일 오전 {SCRAPE_START_HOUR}시~오후 {SCRAPE_END_HOUR - 12}
+            시(KST)에 운송장을 확인하고 발송처리합니다.
+          </p>
+          <p className="text-xs text-muted-foreground">
+            GS 세션은 수 시간만 유효합니다. 자동발송이 멈추면 GS택배에 다시
+            로그인해 쿠키를 갱신하세요.
+          </p>
         </div>
         <Switch
           id="dispatch-auto-mode"
@@ -51,7 +60,10 @@ export function DispatchSettingsTab({ initial }: Props) {
           max="60"
           value={form.pollIntervalMin}
           onChange={(e) =>
-            setForm((prev) => ({ ...prev, pollIntervalMin: Number(e.target.value) }))
+            setForm((prev) => ({
+              ...prev,
+              pollIntervalMin: Number(e.target.value),
+            }))
           }
         />
         <p className="text-xs text-muted-foreground">
@@ -64,12 +76,16 @@ export function DispatchSettingsTab({ initial }: Props) {
           id="dispatch-nextday-code"
           value={form.nextDayDeliveryCode}
           onChange={(e) =>
-            setForm((prev) => ({ ...prev, nextDayDeliveryCode: e.target.value }))
+            setForm((prev) => ({
+              ...prev,
+              nextDayDeliveryCode: e.target.value,
+            }))
           }
           placeholder="DELIVERBOX"
         />
         <p className="text-xs text-muted-foreground">
-          딜리박스 택배사 코드 (네이버 API 기준). 첫 발송처리 후 오류가 나면 조정하세요.
+          딜리박스 택배사 코드 (네이버 API 기준). 첫 발송처리 후 오류가 나면
+          조정하세요.
         </p>
       </div>
       <div className="pt-2">

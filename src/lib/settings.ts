@@ -8,7 +8,6 @@ import type {
   DispatchSettings,
   GsSettings,
   NaverSettings,
-  SenderSettings,
 } from "@/types";
 
 /** 설정값 조회 */
@@ -19,7 +18,11 @@ export function getSetting(key: string): string | null {
 
 /** 설정값 저장 (upsert) */
 export function setSetting(key: string, value: string): void {
-  const existing = db.select().from(settings).where(eq(settings.key, key)).get();
+  const existing = db
+    .select()
+    .from(settings)
+    .where(eq(settings.key, key))
+    .get();
   if (existing) {
     db.update(settings)
       .set({ value, updatedAt: new Date().toISOString() })
@@ -46,29 +49,33 @@ export function getAllSettings(): AllSettings {
   return {
     naver: {
       clientId: getConfigValue("naver.clientId", "NAVER_CLIENT_ID") ?? "",
-      clientSecret: maskSecret(getConfigValue("naver.clientSecret", "NAVER_CLIENT_SECRET")),
+      clientSecret: maskSecret(
+        getConfigValue("naver.clientSecret", "NAVER_CLIENT_SECRET"),
+      ),
     },
     gs: {
       username: getConfigValue("gs.username", "GS_USERNAME") ?? "",
       password: maskSecret(getConfigValue("gs.password", "GS_PASSWORD")),
-    },
-    sender: {
-      name: getConfigValue("sender.name", "SENDER_NAME") ?? "",
-      phone: getConfigValue("sender.phone", "SENDER_PHONE") ?? "",
-      zipcode: getConfigValue("sender.zipcode", "SENDER_ZIPCODE") ?? "",
-      address: getConfigValue("sender.address", "SENDER_ADDRESS") ?? "",
-      addressDetail: getConfigValue("sender.addressDetail", "SENDER_ADDRESS_DETAIL") ?? "",
+      // env 폴백은 기존 SENDER_NAME 재활용 (본인 .env.local에 이미 있을 수 있음 → 무변화)
+      senderName: getConfigValue("gs.senderName", "SENDER_NAME") ?? "",
     },
     booking: {
       defaultProductType: getSetting("booking.defaultProductType") ?? "08",
       defaultPrice: getSetting("booking.defaultPrice") ?? "1",
       defaultDeliveryType:
-        (getSetting("booking.defaultDeliveryType") as "domestic" | "nextDay") ?? "domestic",
+        (getSetting("booking.defaultDeliveryType") as "domestic" | "nextDay") ??
+        "domestic",
+      visitReservationName:
+        getConfigValue(
+          "booking.visitReservationName",
+          "VISIT_RESERVATION_NAME",
+        ) ?? "방문택배 발송",
     },
     dispatch: {
       autoMode: getSetting("dispatch.autoMode") === "true",
       pollIntervalMin: Number(getSetting("dispatch.pollIntervalMin") ?? "5"),
-      nextDayDeliveryCode: getSetting("dispatch.nextDayDeliveryCode") ?? "DELIVERBOX",
+      nextDayDeliveryCode:
+        getSetting("dispatch.nextDayDeliveryCode") ?? "DELIVERBOX",
     },
   };
 }
@@ -78,29 +85,31 @@ export function getAllSettingsRaw(): AllSettings {
   return {
     naver: {
       clientId: getConfigValue("naver.clientId", "NAVER_CLIENT_ID") ?? "",
-      clientSecret: getConfigValue("naver.clientSecret", "NAVER_CLIENT_SECRET") ?? "",
+      clientSecret:
+        getConfigValue("naver.clientSecret", "NAVER_CLIENT_SECRET") ?? "",
     },
     gs: {
       username: getConfigValue("gs.username", "GS_USERNAME") ?? "",
       password: getConfigValue("gs.password", "GS_PASSWORD") ?? "",
-    },
-    sender: {
-      name: getConfigValue("sender.name", "SENDER_NAME") ?? "",
-      phone: getConfigValue("sender.phone", "SENDER_PHONE") ?? "",
-      zipcode: getConfigValue("sender.zipcode", "SENDER_ZIPCODE") ?? "",
-      address: getConfigValue("sender.address", "SENDER_ADDRESS") ?? "",
-      addressDetail: getConfigValue("sender.addressDetail", "SENDER_ADDRESS_DETAIL") ?? "",
+      senderName: getConfigValue("gs.senderName", "SENDER_NAME") ?? "",
     },
     booking: {
       defaultProductType: getSetting("booking.defaultProductType") ?? "08",
       defaultPrice: getSetting("booking.defaultPrice") ?? "1",
       defaultDeliveryType:
-        (getSetting("booking.defaultDeliveryType") as "domestic" | "nextDay") ?? "domestic",
+        (getSetting("booking.defaultDeliveryType") as "domestic" | "nextDay") ??
+        "domestic",
+      visitReservationName:
+        getConfigValue(
+          "booking.visitReservationName",
+          "VISIT_RESERVATION_NAME",
+        ) ?? "방문택배 발송",
     },
     dispatch: {
       autoMode: getSetting("dispatch.autoMode") === "true",
       pollIntervalMin: Number(getSetting("dispatch.pollIntervalMin") ?? "5"),
-      nextDayDeliveryCode: getSetting("dispatch.nextDayDeliveryCode") ?? "DELIVERBOX",
+      nextDayDeliveryCode:
+        getSetting("dispatch.nextDayDeliveryCode") ?? "DELIVERBOX",
     },
   };
 }
@@ -118,20 +127,14 @@ export function updateGsSettings(data: GsSettings): void {
   if (data.password && !data.password.startsWith("****")) {
     setSetting("gs.password", data.password);
   }
-}
-
-export function updateSenderSettings(data: SenderSettings): void {
-  setSetting("sender.name", data.name);
-  setSetting("sender.phone", data.phone);
-  setSetting("sender.zipcode", data.zipcode);
-  setSetting("sender.address", data.address);
-  setSetting("sender.addressDetail", data.addressDetail);
+  setSetting("gs.senderName", data.senderName);
 }
 
 export function updateBookingDefaults(data: BookingDefaults): void {
   setSetting("booking.defaultProductType", data.defaultProductType);
   setSetting("booking.defaultPrice", data.defaultPrice);
   setSetting("booking.defaultDeliveryType", data.defaultDeliveryType);
+  setSetting("booking.visitReservationName", data.visitReservationName);
 }
 
 export function updateDispatchSettings(data: DispatchSettings): void {
@@ -154,4 +157,22 @@ export function getDispatchPollIntervalMs(): number {
 /** 내일배송 택배사 코드 조회 */
 export function getNextDayDeliveryCode(): string {
   return getSetting("dispatch.nextDayDeliveryCode") ?? "DELIVERBOX";
+}
+
+/** GS 주소록에서 선택할 발송인 이름 조회. 미설정이면 빈 문자열 → 호출부에서 안내 후 중단 */
+export function getSenderAddressBookName(): string {
+  return getConfigValue("gs.senderName", "SENDER_NAME") ?? "";
+}
+
+/** 방문택배 예약명 조회 (기본 "방문택배 발송") */
+export function getVisitReservationName(): string {
+  return (
+    getConfigValue("booking.visitReservationName", "VISIT_RESERVATION_NAME") ??
+    "방문택배 발송"
+  );
+}
+
+/** 예약 품목 유형 코드 조회 (기본 08 잡화/서적) */
+export function getProductTypeCode(): string {
+  return getSetting("booking.defaultProductType") ?? "08";
 }

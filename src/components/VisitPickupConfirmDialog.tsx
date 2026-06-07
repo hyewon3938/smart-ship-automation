@@ -11,6 +11,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { useSettings } from "@/hooks/useSettings";
 import { groupOrdersByOrderId } from "@/lib/groupOrders";
 
 import type { Order } from "@/types";
@@ -35,8 +36,13 @@ export function VisitPickupConfirmDialog({
 }: VisitPickupConfirmDialogProps) {
   const groups = useMemo(
     () => groupOrdersByOrderId(selectedOrders),
-    [selectedOrders]
+    [selectedOrders],
   );
+
+  const { data: settings } = useSettings();
+  const reservationName =
+    settings?.booking.visitReservationName ?? "방문택배 발송";
+  const senderName = settings?.gs.senderName || "(미설정)";
 
   const previewGroups = groups.slice(0, MAX_PREVIEW_GROUPS);
   const remainingCount = groups.length - previewGroups.length;
@@ -65,11 +71,16 @@ export function VisitPickupConfirmDialog({
         {/* 수령인 목록 */}
         <div className="border rounded-md divide-y text-sm max-h-56 overflow-y-auto">
           {previewGroups.map((group, i) => (
-            <div key={group.orderId} className="flex items-center gap-2 px-3 py-2">
+            <div
+              key={group.orderId}
+              className="flex items-center gap-2 px-3 py-2"
+            >
               <span className="text-xs text-muted-foreground w-5 shrink-0">
                 {i + 1}.
               </span>
-              <span className="font-medium shrink-0">{group.recipientName}</span>
+              <span className="font-medium shrink-0">
+                {group.recipientName}
+              </span>
               <span className="text-muted-foreground text-xs truncate">
                 {group.recipientAddress}
               </span>
@@ -84,7 +95,9 @@ export function VisitPickupConfirmDialog({
 
         {/* 안내사항 */}
         <div className="rounded-md bg-muted/50 px-3 py-2 text-xs text-muted-foreground space-y-1">
-          <p>- 예약명: 리뷰어 발송 / 보내는 분: 리커밋</p>
+          <p>
+            - 예약명: {reservationName} / 보내는 분: {senderName}
+          </p>
           <p>- 폼 입력 후 브라우저에서 직접 예약하기를 클릭해주세요</p>
         </div>
 
@@ -102,10 +115,7 @@ export function VisitPickupConfirmDialog({
           >
             취소
           </Button>
-          <Button
-            onClick={onConfirm}
-            disabled={isPending || isBelowMinimum}
-          >
+          <Button onClick={onConfirm} disabled={isPending || isBelowMinimum}>
             {isPending ? "입력 중..." : "폼 입력 시작"}
           </Button>
         </DialogFooter>
