@@ -16,7 +16,7 @@ const LIST_HTML_VISIT_ONLY = `
         <a class="bookingNum" href="javascript:" onclick="commonCtrl.setViewPage('detailsKey', '12148215251', '/my-page/reservation/visit/view.do')">12148215251</a>
       </td>
       <td>방문</td>
-      <td>리뷰어 발송</td>
+      <td>방문택배 발송</td>
       <td>2026-05-27</td>
       <td>9</td>
       <td>
@@ -60,7 +60,7 @@ const LIST_HTML_MIXED = `
         <a class="bookingNum" href="javascript:">12148215251</a>
       </td>
       <td>방문</td>
-      <td>리뷰어 발송</td>
+      <td>방문택배 발송</td>
       <td>2026-05-27</td>
       <td>9</td>
       <td><div class="waybillNum"><a class="num">698248901021</a></div></td>

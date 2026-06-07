@@ -1,7 +1,7 @@
 import fs from "fs";
 import path from "path";
 
-import { getSenderAddressBookName } from "@/lib/settings";
+import { getProductTypeCode, getSenderAddressBookName } from "@/lib/settings";
 
 import {
   GS_URLS,
@@ -191,23 +191,24 @@ async function fillAndSubmitForm(
     currentStep = "2. 물품 정보 입력";
     console.log(`[booking] ${currentStep}`);
 
-    // 2-1. 품목선택: <select id="goods_kind"> → value "08" (잡화/서적)
-    await page.locator(S.PRODUCT_SELECT).selectOption("08");
-    console.log(`[booking]   품목선택: 잡화/서적 (08) ✓`);
+    // 2-1. 품목선택: <select id="goods_kind"> (기본 08 잡화/서적, 설정값 사용)
+    const productCode = getProductTypeCode();
+    await page.locator(S.PRODUCT_SELECT).selectOption(productCode);
+    console.log(`[booking]   품목선택: ${productCode} ✓`);
     await page.waitForTimeout(ACTION_DELAY_MS);
 
-    // 2-2. 동의 체크박스: #exemption_agree08 + hidden #exemption_agree = "Y"
-    // goods_kind08 패널이 표시될 때까지 대기
+    // 2-2. 동의 체크박스: 품목코드에 종속된 #exemption_agree{code} + hidden = "Y"
+    // goods_kind 패널이 표시될 때까지 대기
     await page.waitForTimeout(ACTION_DELAY_MS * 2);
-    await page.evaluate(() => {
+    await page.evaluate((code) => {
       const cb = document.querySelector(
-        "#exemption_agree08",
+        `#exemption_agree${code}`,
       ) as HTMLInputElement | null;
       if (cb && !cb.checked) {
         // label.click()만 사용 — 브라우저 네이티브 동작으로 체크박스를 체크함
         // cb.checked = true와 label.click()을 동시에 쓰면 더블 토글로 해제됨!
         const label = document.querySelector(
-          "label[for='exemption_agree08']",
+          `label[for='exemption_agree${code}']`,
         ) as HTMLElement | null;
         if (label) {
           label.click();
@@ -222,14 +223,14 @@ async function fillAndSubmitForm(
         "#exemption_agree",
       ) as HTMLInputElement | null;
       if (hidden) hidden.value = "Y";
-    });
+    }, productCode);
     // 체크 결과 확인 로그
-    const exemptionChecked = await page.evaluate(() => {
+    const exemptionChecked = await page.evaluate((code) => {
       const cb = document.querySelector(
-        "#exemption_agree08",
+        `#exemption_agree${code}`,
       ) as HTMLInputElement | null;
       return cb?.checked ?? false;
-    });
+    }, productCode);
     console.log(
       `[booking]   동의 체크: ${exemptionChecked ? "✓" : "✗ (실패!)"}, exemption_agree=Y`,
     );

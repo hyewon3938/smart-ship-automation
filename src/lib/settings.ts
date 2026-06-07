@@ -65,6 +65,11 @@ export function getAllSettings(): AllSettings {
       defaultDeliveryType:
         (getSetting("booking.defaultDeliveryType") as "domestic" | "nextDay") ??
         "domestic",
+      visitReservationName:
+        getConfigValue(
+          "booking.visitReservationName",
+          "VISIT_RESERVATION_NAME",
+        ) ?? "방문택배 발송",
     },
     dispatch: {
       autoMode: getSetting("dispatch.autoMode") === "true",
@@ -94,6 +99,11 @@ export function getAllSettingsRaw(): AllSettings {
       defaultDeliveryType:
         (getSetting("booking.defaultDeliveryType") as "domestic" | "nextDay") ??
         "domestic",
+      visitReservationName:
+        getConfigValue(
+          "booking.visitReservationName",
+          "VISIT_RESERVATION_NAME",
+        ) ?? "방문택배 발송",
     },
     dispatch: {
       autoMode: getSetting("dispatch.autoMode") === "true",
@@ -124,6 +134,7 @@ export function updateBookingDefaults(data: BookingDefaults): void {
   setSetting("booking.defaultProductType", data.defaultProductType);
   setSetting("booking.defaultPrice", data.defaultPrice);
   setSetting("booking.defaultDeliveryType", data.defaultDeliveryType);
+  setSetting("booking.visitReservationName", data.visitReservationName);
 }
 
 export function updateDispatchSettings(data: DispatchSettings): void {
@@ -151,4 +162,17 @@ export function getNextDayDeliveryCode(): string {
 /** GS 주소록에서 선택할 발송인 이름 조회. 미설정이면 빈 문자열 → 호출부에서 안내 후 중단 */
 export function getSenderAddressBookName(): string {
   return getConfigValue("gs.senderName", "SENDER_NAME") ?? "";
+}
+
+/** 방문택배 예약명 조회 (기본 "방문택배 발송") */
+export function getVisitReservationName(): string {
+  return (
+    getConfigValue("booking.visitReservationName", "VISIT_RESERVATION_NAME") ??
+    "방문택배 발송"
+  );
+}
+
+/** 예약 품목 유형 코드 조회 (기본 08 잡화/서적) */
+export function getProductTypeCode(): string {
+  return getSetting("booking.defaultProductType") ?? "08";
 }

@@ -84,6 +84,8 @@ export interface BookingDefaults {
   defaultProductType: string;
   defaultPrice: string;
   defaultDeliveryType: DeliveryType;
+  /** 방문택배 예약명 (GS 예약 목록 식별용) */
+  visitReservationName: string;
 }
 
 export interface DispatchSettings {

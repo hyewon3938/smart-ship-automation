@@ -1,7 +1,11 @@
 import fs from "fs";
 import path from "path";
 
-import { getSenderAddressBookName } from "@/lib/settings";
+import {
+  getProductTypeCode,
+  getSenderAddressBookName,
+  getVisitReservationName,
+} from "@/lib/settings";
 
 import {
   GS_URLS,
@@ -220,20 +224,21 @@ export async function bookVisitPickup(
 
     const S = DOMESTIC_SELECTORS;
 
-    // 품목선택: 잡화/서적 (08)
-    await page.locator(S.PRODUCT_SELECT).selectOption("08");
-    console.log(`[visit-pickup]   품목선택: 잡화/서적 (08) ✓`);
+    // 품목선택 (기본 08 잡화/서적, 설정값 사용)
+    const productCode = getProductTypeCode();
+    await page.locator(S.PRODUCT_SELECT).selectOption(productCode);
+    console.log(`[visit-pickup]   품목선택: ${productCode} ✓`);
     await page.waitForTimeout(ACTION_DELAY_MS);
 
-    // 동의 체크박스
+    // 동의 체크박스 (품목코드에 종속된 #exemption_agree{code})
     await page.waitForTimeout(ACTION_DELAY_MS * 2);
-    await page.evaluate(() => {
+    await page.evaluate((code) => {
       const cb = document.querySelector(
-        "#exemption_agree08",
+        `#exemption_agree${code}`,
       ) as HTMLInputElement | null;
       if (cb && !cb.checked) {
         const label = document.querySelector(
-          "label[for='exemption_agree08']",
+          `label[for='exemption_agree${code}']`,
         ) as HTMLElement | null;
         if (label) {
           label.click();
@@ -246,7 +251,7 @@ export async function bookVisitPickup(
         "#exemption_agree",
       ) as HTMLInputElement | null;
       if (hidden) hidden.value = "Y";
-    });
+    }, productCode);
     console.log(`[visit-pickup]   동의 체크 ✓`);
     await page.waitForTimeout(ACTION_DELAY_MS);
 
@@ -255,9 +260,10 @@ export async function bookVisitPickup(
     await page.locator(S.PRODUCT_PRICE).fill(String(priceInManWon));
     console.log(`[visit-pickup]   물품 가액: ${priceInManWon}만원 ✓`);
 
-    // 예약명: "리뷰어 발송" (고정)
-    await page.locator(S.RESERVATION_NAME).fill("리뷰어 발송");
-    console.log(`[visit-pickup]   예약명: 리뷰어 발송 ✓`);
+    // 예약명 (설정값, 기본 "방문택배 발송")
+    const reservationName = getVisitReservationName();
+    await page.locator(S.RESERVATION_NAME).fill(reservationName);
+    console.log(`[visit-pickup]   예약명: ${reservationName} ✓`);
 
     await page.waitForTimeout(ACTION_DELAY_MS);
     console.log(`[visit-pickup] ${currentStep} ✓`);
