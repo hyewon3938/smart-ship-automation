@@ -38,6 +38,10 @@ export function DispatchSettingsTab({ initial }: Props) {
             예약 후 매일 오전 {SCRAPE_START_HOUR}시~오후 {SCRAPE_END_HOUR - 12}
             시(KST)에 운송장을 확인하고 발송처리합니다.
           </p>
+          <p className="text-xs text-muted-foreground">
+            GS 세션은 수 시간만 유효합니다. 자동발송이 멈추면 GS택배에 다시
+            로그인해 쿠키를 갱신하세요.
+          </p>
         </div>
         <Switch
           id="dispatch-auto-mode"
