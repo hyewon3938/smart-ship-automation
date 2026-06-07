@@ -26,7 +26,7 @@ export function GsSettingsTab({ initial }: Props) {
       {
         onSuccess: () => toast.success("GS택배 설정이 저장되었습니다."),
         onError: (err) => toast.error(err.message),
-      }
+      },
     );
   };
 
@@ -50,7 +50,9 @@ export function GsSettingsTab({ initial }: Props) {
         <Input
           id="gs-username"
           value={form.username}
-          onChange={(e) => setForm((prev) => ({ ...prev, username: e.target.value }))}
+          onChange={(e) =>
+            setForm((prev) => ({ ...prev, username: e.target.value }))
+          }
           placeholder="cvsnet.co.kr 아이디"
         />
       </div>
@@ -66,8 +68,24 @@ export function GsSettingsTab({ initial }: Props) {
           placeholder="cvsnet.co.kr 비밀번호"
         />
       </div>
+      <div className="space-y-2">
+        <Label htmlFor="gs-sender-name">주소록 발송인 이름</Label>
+        <Input
+          id="gs-sender-name"
+          value={form.senderName}
+          onChange={(e) =>
+            setForm((prev) => ({ ...prev, senderName: e.target.value }))
+          }
+          placeholder="GS택배 '나의 주소록'에 등록한 발송인 이름"
+        />
+        <p className="text-xs text-muted-foreground">
+          GS택배 마이페이지 → 나의 주소록에 발송인을 등록하고, 그 이름을
+          입력하세요. 예약 시 주소록에서 이 이름으로 발송인을 자동 선택합니다.
+        </p>
+      </div>
       <p className="text-sm text-muted-foreground">
-        로그인 테스트 시 브라우저 창이 열립니다. 캡챠가 표시되면 직접 통과해주세요.
+        로그인 테스트 시 브라우저 창이 열립니다. 캡챠가 표시되면 직접
+        통과해주세요.
       </p>
       <div className="flex gap-2 pt-2">
         <Button

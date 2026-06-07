@@ -1,6 +1,8 @@
 import fs from "fs";
 import path from "path";
 
+import { getSenderAddressBookName } from "@/lib/settings";
+
 import {
   GS_URLS,
   DOMESTIC_SELECTORS,
@@ -54,7 +56,7 @@ function formatPhone(raw: string): string {
  */
 export async function bookDomestic(
   page: Page,
-  task: BookingTask
+  task: BookingTask,
 ): Promise<BookingResult> {
   return fillAndSubmitForm(page, task, GS_URLS.DOMESTIC, DOMESTIC_SELECTORS);
 }
@@ -64,11 +66,16 @@ export async function bookDomestic(
  */
 export async function bookNextDay(
   page: Page,
-  task: BookingTask
+  task: BookingTask,
 ): Promise<BookingResult> {
   // 2026-04 GS택배 사이트 변경: 내일배송 선택 페이지(내일택배/내일반값) 추가됨
   // 선택 페이지를 건너뛰고 내일택배 폼 URL로 직접 이동
-  return fillAndSubmitForm(page, task, GS_URLS.NEXT_DAY_FORM, NEXT_DAY_SELECTORS);
+  return fillAndSubmitForm(
+    page,
+    task,
+    GS_URLS.NEXT_DAY_FORM,
+    NEXT_DAY_SELECTORS,
+  );
 }
 
 /**
@@ -80,7 +87,7 @@ async function fillAndSubmitForm(
   page: Page,
   task: BookingTask,
   url: string,
-  S: typeof DOMESTIC_SELECTORS
+  S: typeof DOMESTIC_SELECTORS,
 ): Promise<BookingResult> {
   let currentStep = "";
 
@@ -101,9 +108,14 @@ async function fillAndSubmitForm(
     for (let popupTry = 0; popupTry < 5; popupTry++) {
       await page.waitForTimeout(1000);
       const clicked = await page.evaluate(() => {
-        const keywords = ["오늘 하루 보지 않기", "인지하였습니다", "동의합니다", "닫기"];
+        const keywords = [
+          "오늘 하루 보지 않기",
+          "인지하였습니다",
+          "동의합니다",
+          "닫기",
+        ];
         const candidates = Array.from(
-          document.querySelectorAll("a, button")
+          document.querySelectorAll("a, button"),
         ) as HTMLElement[];
         for (const kw of keywords) {
           for (const el of candidates) {
@@ -120,11 +132,13 @@ async function fillAndSubmitForm(
         return null;
       });
       if (clicked) {
-        console.log(`[booking] ${currentStep} — "${clicked}" 클릭 (#${popupTry + 1})`);
+        console.log(
+          `[booking] ${currentStep} — "${clicked}" 클릭 (#${popupTry + 1})`,
+        );
         await page.waitForTimeout(ACTION_DELAY_MS * 2);
       } else {
         console.log(
-          `[booking] ${currentStep} — 팝업 ${popupTry === 0 ? "없음" : "모두 닫음"} ✓`
+          `[booking] ${currentStep} — 팝업 ${popupTry === 0 ? "없음" : "모두 닫음"} ✓`,
         );
         break;
       }
@@ -132,17 +146,19 @@ async function fillAndSubmitForm(
 
     // 비로그인 상태 감지 — 세션 만료 시 폼 대기 전에 빠르게 실패
     currentStep = "1-2. 로그인 상태 확인";
-    const notLoggedIn = await page.evaluate(() => {
-      const bodyText = document.body.innerText;
-      return (
-        bodyText.includes("비로그인") ||
-        bodyText.includes("로그인이 필요") ||
-        bodyText.includes("로그인 후 이용")
-      );
-    }).catch(() => false);
+    const notLoggedIn = await page
+      .evaluate(() => {
+        const bodyText = document.body.innerText;
+        return (
+          bodyText.includes("비로그인") ||
+          bodyText.includes("로그인이 필요") ||
+          bodyText.includes("로그인 후 이용")
+        );
+      })
+      .catch(() => false);
     if (notLoggedIn) {
       throw new Error(
-        "GS택배 세션이 만료되었습니다. 로컬에서 다시 로그인하여 쿠키를 갱신해주세요."
+        "GS택배 세션이 만료되었습니다. 로컬에서 다시 로그인하여 쿠키를 갱신해주세요.",
       );
     }
     console.log(`[booking] ${currentStep} ✓`);
@@ -155,7 +171,8 @@ async function fillAndSubmitForm(
 
     // ── DEBUG: 폼 HTML 덤프 (셀렉터 확인용) ──
     try {
-      if (!fs.existsSync(DEBUG_DIR)) fs.mkdirSync(DEBUG_DIR, { recursive: true });
+      if (!fs.existsSync(DEBUG_DIR))
+        fs.mkdirSync(DEBUG_DIR, { recursive: true });
       const formHtml = await page.evaluate(() => {
         const form = document.querySelector("#frm");
         return form?.innerHTML?.substring(0, 50000) ?? "form not found";
@@ -163,7 +180,7 @@ async function fillAndSubmitForm(
       fs.writeFileSync(
         path.join(DEBUG_DIR, `form-dump-${Date.now()}.html`),
         formHtml,
-        "utf-8"
+        "utf-8",
       );
       console.log(`[booking] 🔍 폼 HTML 덤프 저장 완료`);
     } catch {
@@ -183,11 +200,15 @@ async function fillAndSubmitForm(
     // goods_kind08 패널이 표시될 때까지 대기
     await page.waitForTimeout(ACTION_DELAY_MS * 2);
     await page.evaluate(() => {
-      const cb = document.querySelector("#exemption_agree08") as HTMLInputElement | null;
+      const cb = document.querySelector(
+        "#exemption_agree08",
+      ) as HTMLInputElement | null;
       if (cb && !cb.checked) {
         // label.click()만 사용 — 브라우저 네이티브 동작으로 체크박스를 체크함
         // cb.checked = true와 label.click()을 동시에 쓰면 더블 토글로 해제됨!
-        const label = document.querySelector("label[for='exemption_agree08']") as HTMLElement | null;
+        const label = document.querySelector(
+          "label[for='exemption_agree08']",
+        ) as HTMLElement | null;
         if (label) {
           label.click();
         } else {
@@ -197,15 +218,21 @@ async function fillAndSubmitForm(
         }
       }
       // hidden 필드도 "Y"로 설정
-      const hidden = document.querySelector("#exemption_agree") as HTMLInputElement | null;
+      const hidden = document.querySelector(
+        "#exemption_agree",
+      ) as HTMLInputElement | null;
       if (hidden) hidden.value = "Y";
     });
     // 체크 결과 확인 로그
     const exemptionChecked = await page.evaluate(() => {
-      const cb = document.querySelector("#exemption_agree08") as HTMLInputElement | null;
+      const cb = document.querySelector(
+        "#exemption_agree08",
+      ) as HTMLInputElement | null;
       return cb?.checked ?? false;
     });
-    console.log(`[booking]   동의 체크: ${exemptionChecked ? "✓" : "✗ (실패!)"}, exemption_agree=Y`);
+    console.log(
+      `[booking]   동의 체크: ${exemptionChecked ? "✓" : "✗ (실패!)"}, exemption_agree=Y`,
+    );
     await page.waitForTimeout(ACTION_DELAY_MS);
 
     // 2-3. 물품 가액 (만원 단위 올림)
@@ -221,9 +248,16 @@ async function fillAndSubmitForm(
     await page.waitForTimeout(ACTION_DELAY_MS);
     console.log(`[booking] ${currentStep} ✓`);
 
-    // ── 3. 보내는 분: 주소록에서 "리커밋"(기본) 선택 ──
+    // ── 3. 보내는 분: 주소록에서 설정한 발송인 이름 선택 ──
     currentStep = "3. 보내는 분 주소록 가져오기";
     console.log(`[booking] ${currentStep}`);
+
+    const senderAddrName = getSenderAddressBookName();
+    if (!senderAddrName) {
+      throw new Error(
+        "발송인 이름이 설정되지 않았습니다. 설정 > GS택배 > '주소록 발송인 이름'을 입력해주세요.",
+      );
+    }
 
     // "나의 주소록" 버튼 클릭
     const addrBtnVisible = await page
@@ -234,9 +268,14 @@ async function fillAndSubmitForm(
       await page.locator(S.SENDER_ADDRESSBOOK_BTN).click();
     } else {
       await page.evaluate(() => {
-        const els = Array.from(document.querySelectorAll("a, button")) as HTMLElement[];
+        const els = Array.from(
+          document.querySelectorAll("a, button"),
+        ) as HTMLElement[];
         for (const el of els) {
-          if (el.textContent?.trim().includes("나의 주소록") && el.offsetParent !== null) {
+          if (
+            el.textContent?.trim().includes("나의 주소록") &&
+            el.offsetParent !== null
+          ) {
             el.click();
             return;
           }
@@ -246,20 +285,21 @@ async function fillAndSubmitForm(
     console.log(`[booking]   "나의 주소록" 클릭 ✓`);
     await page.waitForTimeout(ACTION_DELAY_MS * 4);
 
-    // 주소록 레이어에서 "리커밋" 또는 "기본" 뱃지 항목 선택
-    const addrSelected = await page.evaluate(() => {
+    // 주소록 레이어에서 설정한 발송인 이름 또는 "기본" 뱃지 항목 선택
+    const addrSelected = await page.evaluate((targetName) => {
       // 레이어 내 모든 행/항목 검색
-      const layer = document.querySelector("#layer_myAddrList") || document.body;
+      const layer =
+        document.querySelector("#layer_myAddrList") || document.body;
       const rows = layer.querySelectorAll("tr, li, .list, [class*='addr']");
 
-      // 1) "리커밋" 텍스트가 있는 행 찾기
+      // 1) 발송인 이름 텍스트가 있는 행 찾기
       for (const row of Array.from(rows)) {
-        if (row.textContent?.includes("리커밋")) {
+        if (row.textContent?.includes(targetName)) {
           // 해당 행의 선택 버튼 클릭
           const btn = row.querySelector("a, button") as HTMLElement | null;
           if (btn) {
             btn.click();
-            return "리커밋";
+            return targetName;
           }
         }
       }
@@ -286,7 +326,7 @@ async function fillAndSubmitForm(
       }
 
       return null;
-    });
+    }, senderAddrName);
     if (addrSelected) {
       console.log(`[booking]   주소록 "${addrSelected}" 선택 ✓`);
     } else {
@@ -294,22 +334,31 @@ async function fillAndSubmitForm(
     }
     await page.waitForTimeout(ACTION_DELAY_MS * 2);
 
-    // 선택 후 검증: 보내는 분 이름이 "리커밋"인지 확인
+    // 선택 후 검증: 보내는 분 이름이 설정값과 일치하는지 확인
     const senderName = await page.evaluate(() => {
-      const el = document.querySelector("#real_sender_name") as HTMLInputElement | null;
+      const el = document.querySelector(
+        "#real_sender_name",
+      ) as HTMLInputElement | null;
       return el?.value ?? "";
     });
-    if (!senderName.includes("리커밋")) {
-      console.warn(`[booking]   ⚠️ 보내는 분이 "${senderName}" — "리커밋"이 아님! 재시도...`);
+    if (!senderName.includes(senderAddrName)) {
+      console.warn(
+        `[booking]   ⚠️ 보내는 분이 "${senderName}" — "${senderAddrName}"이(가) 아님! 재시도...`,
+      );
 
       // 주소록 레이어가 닫혔을 수 있으므로 다시 열기
       if (addrBtnVisible) {
         await page.locator(S.SENDER_ADDRESSBOOK_BTN).click();
       } else {
         await page.evaluate(() => {
-          const els = Array.from(document.querySelectorAll("a, button")) as HTMLElement[];
+          const els = Array.from(
+            document.querySelectorAll("a, button"),
+          ) as HTMLElement[];
           for (const el of els) {
-            if (el.textContent?.trim().includes("나의 주소록") && el.offsetParent !== null) {
+            if (
+              el.textContent?.trim().includes("나의 주소록") &&
+              el.offsetParent !== null
+            ) {
               el.click();
               return;
             }
@@ -318,24 +367,30 @@ async function fillAndSubmitForm(
       }
       await page.waitForTimeout(ACTION_DELAY_MS * 4);
 
-      // 재시도: 더 넓은 범위로 "리커밋" 검색
-      const retryResult = await page.evaluate(() => {
-        const layer = document.querySelector("#layer_myAddrList") || document.body;
-        // 레이어 전체 텍스트에서 "리커밋" 포함된 클릭 가능 요소 찾기
+      // 재시도: 더 넓은 범위로 발송인 이름 검색
+      const retryResult = await page.evaluate((targetName) => {
+        const layer =
+          document.querySelector("#layer_myAddrList") || document.body;
+        // 레이어 전체 텍스트에서 발송인 이름 포함된 클릭 가능 요소 찾기
         const allElements = layer.querySelectorAll("*");
         for (const el of Array.from(allElements)) {
           const htmlEl = el as HTMLElement;
-          // "리커밋"이 포함된 행의 선택 버튼 찾기
-          if (htmlEl.textContent?.includes("리커밋") && (htmlEl.tagName === "TR" || htmlEl.tagName === "LI" || htmlEl.tagName === "DIV")) {
+          // 발송인 이름이 포함된 행의 선택 버튼 찾기
+          if (
+            htmlEl.textContent?.includes(targetName) &&
+            (htmlEl.tagName === "TR" ||
+              htmlEl.tagName === "LI" ||
+              htmlEl.tagName === "DIV")
+          ) {
             const btn = htmlEl.querySelector("a, button") as HTMLElement | null;
             if (btn && btn.offsetParent !== null) {
               btn.click();
-              return "리커밋 (재시도)";
+              return `${targetName} (재시도)`;
             }
           }
         }
         return null;
-      });
+      }, senderAddrName);
       if (retryResult) {
         console.log(`[booking]   주소록 "${retryResult}" 선택 ✓`);
         await page.waitForTimeout(ACTION_DELAY_MS * 2);
@@ -343,29 +398,41 @@ async function fillAndSubmitForm(
 
       // 최종 검증
       const finalSenderName = await page.evaluate(() => {
-        const el = document.querySelector("#real_sender_name") as HTMLInputElement | null;
+        const el = document.querySelector(
+          "#real_sender_name",
+        ) as HTMLInputElement | null;
         return el?.value ?? "";
       });
-      if (!finalSenderName.includes("리커밋")) {
-        console.error(`[booking]   ❌ 보내는 분 최종값: "${finalSenderName}" — 리커밋 선택 실패`);
-        throw new Error(`보내는 분이 "${finalSenderName}"(으)로 설정됨. 주소록에서 "리커밋"을 찾을 수 없습니다.`);
+      if (!finalSenderName.includes(senderAddrName)) {
+        console.error(
+          `[booking]   ❌ 보내는 분 최종값: "${finalSenderName}" — "${senderAddrName}" 선택 실패`,
+        );
+        throw new Error(
+          `보내는 분이 "${finalSenderName}"(으)로 설정됨. 주소록에서 "${senderAddrName}"을(를) 찾을 수 없습니다. 설정의 발송인 이름과 GS 주소록을 확인해주세요.`,
+        );
       }
     }
-    console.log(`[booking]   보내는 분 확인: "${senderName.includes("리커밋") ? senderName : "리커밋"}" ✓`);
+    console.log(
+      `[booking]   보내는 분 확인: "${senderName.includes(senderAddrName) ? senderName : senderAddrName}" ✓`,
+    );
     console.log(`[booking] ${currentStep} ✓`);
 
     // ── 4. 받는 분 정보 ──
     currentStep = "4. 받는 분 정보 입력";
     console.log(
-      `[booking] ${currentStep}: ${task.recipientName} / ${task.recipientAddress}`
+      `[booking] ${currentStep}: ${task.recipientName} / ${task.recipientAddress}`,
     );
 
     // 우편번호 + 주소를 먼저 설정 (readonly → JS로 직접 설정)
     // 사이트 JS가 주소 변경 시 다른 필드를 리셋할 수 있으므로 주소부터 채움
     await page.evaluate(
       ({ zip, addr }) => {
-        const zipEl = document.querySelector("#receiver_postno") as HTMLInputElement;
-        const addrEl = document.querySelector("#receiver_addr") as HTMLInputElement;
+        const zipEl = document.querySelector(
+          "#receiver_postno",
+        ) as HTMLInputElement;
+        const addrEl = document.querySelector(
+          "#receiver_addr",
+        ) as HTMLInputElement;
         if (zipEl) {
           zipEl.removeAttribute("readonly");
           zipEl.value = zip;
@@ -379,7 +446,10 @@ async function fillAndSubmitForm(
           addrEl.dispatchEvent(new Event("change", { bubbles: true }));
         }
       },
-      { zip: task.recipientZipCode, addr: sanitizeAddress(task.recipientAddress) }
+      {
+        zip: task.recipientZipCode,
+        addr: sanitizeAddress(task.recipientAddress),
+      },
     );
     console.log(`[booking]   우편번호: ${task.recipientZipCode} ✓`);
     console.log(`[booking]   주소: ${task.recipientAddress} ✓`);
@@ -389,7 +459,9 @@ async function fillAndSubmitForm(
     if (task.recipientAddressDetail) {
       const cleanDetail = sanitizeAddress(task.recipientAddressDetail);
       await page.locator(S.RECIPIENT_ADDRESS_DETAIL).fill(cleanDetail);
-      console.log(`[booking]   상세주소: ${task.recipientAddressDetail} → ${cleanDetail} ✓`);
+      console.log(
+        `[booking]   상세주소: ${task.recipientAddressDetail} → ${cleanDetail} ✓`,
+      );
     }
 
     // 이름 (주소 설정 후에 입력 — 사이트 JS 리셋 방지)
@@ -405,10 +477,14 @@ async function fillAndSubmitForm(
 
     // 전화번호 입력 확인
     const phoneVerify = await page.evaluate(() => {
-      const el = document.querySelector("#receiver_telno") as HTMLInputElement | null;
+      const el = document.querySelector(
+        "#receiver_telno",
+      ) as HTMLInputElement | null;
       return el?.value ?? "";
     });
-    console.log(`[booking]   전화번호: ${formattedPhone} → 실제값: ${phoneVerify} ${phoneVerify === formattedPhone ? "✓" : "✗"}`);
+    console.log(
+      `[booking]   전화번호: ${formattedPhone} → 실제값: ${phoneVerify} ${phoneVerify === formattedPhone ? "✓" : "✗"}`,
+    );
 
     // 배송 요청사항 (#special_contents)
     if (task.shippingMemo) {
@@ -451,38 +527,47 @@ async function fillAndSubmitForm(
 
     // 성공 판단: URL 변경 또는 페이지 내 완료/접수 텍스트 확인
     const currentUrl = page.url();
-    const pageText = await page.evaluate(() => document.body.innerText).catch(() => "");
+    const pageText = await page
+      .evaluate(() => document.body.innerText)
+      .catch(() => "");
     const hasSuccessText =
       pageText.includes("예약이 완료") ||
       pageText.includes("접수되었습니다") ||
       pageText.includes("예약 완료") ||
       pageText.includes("예약번호");
-    const urlChanged = !currentUrl.includes("domestic/index.do") && !currentUrl.includes("nextDay/nextIndex.do") && !currentUrl.includes("nextDmstc/contentsid/410/index.do");
+    const urlChanged =
+      !currentUrl.includes("domestic/index.do") &&
+      !currentUrl.includes("nextDay/nextIndex.do") &&
+      !currentUrl.includes("nextDmstc/contentsid/410/index.do");
 
     // 예약번호 추출 시도 (페이지에 표시된 경우)
-    let reservationNo = await page.evaluate(() => {
-      const text = document.body.innerText;
-      // 다양한 패턴으로 예약번호 탐색
-      const patterns = [
-        /예약번호[:\s]*([A-Z0-9-]+)/,
-        /예약번호[:\s]*(\d[\d-]+\d)/,
-      ];
-      for (const p of patterns) {
-        const m = text.match(p);
-        if (m?.[1]) return m[1];
-      }
-      return "";
-    }).catch(() => "");
+    let reservationNo = await page
+      .evaluate(() => {
+        const text = document.body.innerText;
+        // 다양한 패턴으로 예약번호 탐색
+        const patterns = [
+          /예약번호[:\s]*([A-Z0-9-]+)/,
+          /예약번호[:\s]*(\d[\d-]+\d)/,
+        ];
+        for (const p of patterns) {
+          const m = text.match(p);
+          if (m?.[1]) return m[1];
+        }
+        return "";
+      })
+      .catch(() => "");
 
     if (hasSuccessText || urlChanged || reservationNo) {
       // 예약번호를 못 찾았으면 예약 목록에서 가져오기
       if (!reservationNo) {
-        console.log(`[booking] 확인 페이지에서 예약번호 못 찾음 — 예약 목록에서 조회`);
+        console.log(
+          `[booking] 확인 페이지에서 예약번호 못 찾음 — 예약 목록에서 조회`,
+        );
         reservationNo = await fetchLatestReservationNo(page);
       }
 
       console.log(
-        `[booking] ${currentStep} ✓ — 예약번호: ${reservationNo || "(없음)"}, URL변경: ${urlChanged}, 성공텍스트: ${hasSuccessText}`
+        `[booking] ${currentStep} ✓ — 예약번호: ${reservationNo || "(없음)"}, URL변경: ${urlChanged}, 성공텍스트: ${hasSuccessText}`,
       );
       return {
         success: true,
@@ -500,15 +585,21 @@ async function fillAndSubmitForm(
     if (!formStillVisible) {
       // 폼 사라졌으면 성공이지만 예약번호가 필요 — 예약 목록에서 조회
       reservationNo = await fetchLatestReservationNo(page);
-      console.log(`[booking] ${currentStep} ✓ — 폼 사라짐 (성공), 예약번호: ${reservationNo || "(없음)"}`);
+      console.log(
+        `[booking] ${currentStep} ✓ — 폼 사라짐 (성공), 예약번호: ${reservationNo || "(없음)"}`,
+      );
       return { success: true, reservationNo: reservationNo || undefined };
     }
 
     // 폼이 아직 있으면 제출이 안 된 것일 수 있음 — 그래도 예약 목록 확인
-    console.warn(`[booking] ${currentStep} ⚠️ 폼이 아직 남아있음 — 예약 목록에서 확인`);
+    console.warn(
+      `[booking] ${currentStep} ⚠️ 폼이 아직 남아있음 — 예약 목록에서 확인`,
+    );
     reservationNo = await fetchLatestReservationNo(page);
     if (reservationNo) {
-      console.log(`[booking] 예약 목록에서 최신 예약번호 발견: ${reservationNo} → 성공 처리`);
+      console.log(
+        `[booking] 예약 목록에서 최신 예약번호 발견: ${reservationNo} → 성공 처리`,
+      );
       return { success: true, reservationNo };
     }
 
@@ -517,12 +608,12 @@ async function fillAndSubmitForm(
     console.error("[booking] ❌ 예약 실패 — 폼이 남아있고 예약번호도 없음");
     return {
       success: false,
-      error: "예약 제출 실패 — 폼이 여전히 표시되고 예약번호를 찾을 수 없습니다. 팝업이나 입력 오류를 확인해주세요.",
+      error:
+        "예약 제출 실패 — 폼이 여전히 표시되고 예약번호를 찾을 수 없습니다. 팝업이나 입력 오류를 확인해주세요.",
       screenshotPath: errorScreenshot,
     };
   } catch (error) {
-    const errorMsg =
-      error instanceof Error ? error.message : "알 수 없는 오류";
+    const errorMsg = error instanceof Error ? error.message : "알 수 없는 오류";
     console.error(`[booking] ❌ 실패 — 단계: ${currentStep}`);
     console.error(`[booking] ❌ 원인: ${errorMsg}`);
 
@@ -569,20 +660,27 @@ async function fetchLatestReservationNo(page: Page): Promise<string> {
     const noMatch = rawNo.match(/(\d[\d-]{5,}\d)/);
     if (noMatch) {
       const extracted = noMatch[1];
-      console.log(`[booking] 예약 목록에서 최신 예약번호 추출: ${extracted} (raw: "${rawNo}")`);
+      console.log(
+        `[booking] 예약 목록에서 최신 예약번호 추출: ${extracted} (raw: "${rawNo}")`,
+      );
       return extracted;
     }
 
     // 전체 셀 내용 디버깅
     const allCellTexts = await Promise.all(
-      cells.map(async (c, i) => `[${i}]="${((await c.textContent()) ?? "").trim().slice(0, 30)}"`)
+      cells.map(
+        async (c, i) =>
+          `[${i}]="${((await c.textContent()) ?? "").trim().slice(0, 30)}"`,
+      ),
     );
-    console.warn(`[booking] 예약 목록 예약번호 형식 불일치: "${rawNo}". 전체 셀: ${allCellTexts.join(", ")}`);
+    console.warn(
+      `[booking] 예약 목록 예약번호 형식 불일치: "${rawNo}". 전체 셀: ${allCellTexts.join(", ")}`,
+    );
     return "";
   } catch (err) {
     console.warn(
       "[booking] 예약 목록 조회 실패:",
-      err instanceof Error ? err.message : err
+      err instanceof Error ? err.message : err,
     );
     return "";
   }
@@ -600,10 +698,14 @@ async function fetchLatestReservationNo(page: Page): Promise<string> {
  */
 async function handleNextDayPopup(page: Page): Promise<void> {
   // 먼저 팝업이 있는지 빠르게 확인 — 없으면 바로 리턴
-  const hasPopup = await page.evaluate(() => {
-    return document.body.innerText.includes("내일택배로 보낼까요") ||
-           document.body.innerText.includes("내일택배에로 보내");
-  }).catch(() => false);
+  const hasPopup = await page
+    .evaluate(() => {
+      return (
+        document.body.innerText.includes("내일택배로 보낼까요") ||
+        document.body.innerText.includes("내일택배에로 보내")
+      );
+    })
+    .catch(() => false);
 
   if (!hasPopup) return; // 팝업 없으면 대기 없이 즉시 리턴
 
@@ -622,7 +724,9 @@ async function handleNextDayPopup(page: Page): Promise<void> {
 
   // 방법 2: "국내택배로" (뒤에 조사 포함)로 정확히 검색 — "국내택배예약" 제목과 구분
   const clicked = await page.evaluate(() => {
-    const all = Array.from(document.querySelectorAll("a, button, div, span")) as HTMLElement[];
+    const all = Array.from(
+      document.querySelectorAll("a, button, div, span"),
+    ) as HTMLElement[];
     for (const el of all) {
       const txt = el.textContent?.trim() ?? "";
       if (
@@ -645,12 +749,19 @@ async function handleNextDayPopup(page: Page): Promise<void> {
 
   // 방법 3: 팝업 모달 내 닫기 버튼
   await page.evaluate(() => {
-    const modals = document.querySelectorAll("[class*='layer'], [class*='pop'], .modal");
+    const modals = document.querySelectorAll(
+      "[class*='layer'], [class*='pop'], .modal",
+    );
     for (const modal of Array.from(modals)) {
       const el = modal as HTMLElement;
       if (el.offsetParent !== null && el.textContent?.includes("내일택배")) {
-        const closeBtn = el.querySelector(".close, .btn-close, [class*='close']") as HTMLElement | null;
-        if (closeBtn) { closeBtn.click(); return; }
+        const closeBtn = el.querySelector(
+          ".close, .btn-close, [class*='close']",
+        ) as HTMLElement | null;
+        if (closeBtn) {
+          closeBtn.click();
+          return;
+        }
       }
     }
   });
@@ -665,9 +776,15 @@ async function dismissPopups(page: Page): Promise<void> {
   for (let i = 0; i < 3; i++) {
     await page.waitForTimeout(500);
     const clicked = await page.evaluate(() => {
-      const keywords = ["오늘 하루 보지 않기", "인지하였습니다", "동의합니다", "확인", "닫기"];
+      const keywords = [
+        "오늘 하루 보지 않기",
+        "인지하였습니다",
+        "동의합니다",
+        "확인",
+        "닫기",
+      ];
       const candidates = Array.from(
-        document.querySelectorAll("a, button")
+        document.querySelectorAll("a, button"),
       ) as HTMLElement[];
       for (const kw of keywords) {
         for (const el of candidates) {
@@ -696,10 +813,7 @@ async function dismissPopups(page: Page): Promise<void> {
  * 에러 시 스크린샷 저장.
  * 경로: data/screenshots/order-{id}-{timestamp}.png
  */
-async function saveScreenshot(
-  page: Page,
-  orderId: number
-): Promise<string> {
+async function saveScreenshot(page: Page, orderId: number): Promise<string> {
   if (!fs.existsSync(SCREENSHOTS_DIR)) {
     fs.mkdirSync(SCREENSHOTS_DIR, { recursive: true });
   }

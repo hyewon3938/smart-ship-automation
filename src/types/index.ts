@@ -76,14 +76,8 @@ export interface NaverSettings {
 export interface GsSettings {
   username: string;
   password: string;
-}
-
-export interface SenderSettings {
-  name: string;
-  phone: string;
-  zipcode: string;
-  address: string;
-  addressDetail: string;
+  /** GS택배 "나의 주소록"에 등록한 발송인 이름 (예약 시 이 이름으로 주소록 항목 선택) */
+  senderName: string;
 }
 
 export interface BookingDefaults {
@@ -102,7 +96,6 @@ export interface DispatchSettings {
 export interface AllSettings {
   naver: NaverSettings;
   gs: GsSettings;
-  sender: SenderSettings;
   booking: BookingDefaults;
   dispatch: DispatchSettings;
 }
