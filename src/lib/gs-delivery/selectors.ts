@@ -55,8 +55,8 @@ export const DOMESTIC_SELECTORS = {
   RESERVATION_NAME: "#reserved_comments",
 
   // 물품 정보
-  PRODUCT_SELECT: "#goods_kind", // 물품 종류 <select> (08=잡화/서적)
-  PRODUCT_EXEMPTION: "#exemption_agree08", // 잡화/서적 선택 시 동의 체크박스
+  PRODUCT_SELECT: "#goods_kind", // 물품 종류 <select> (기본 08=잡화/서적, 설정값 사용)
+  // 동의 체크박스는 품목코드 종속(#exemption_agree{code})이라 automation에서 동적 생성
   PRODUCT_PRICE: "#goods_price", // 물품 가액 (만원 단위)
 
   // 보내는 분 — 주소록에서 선택하는 UI
