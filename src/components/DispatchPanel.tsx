@@ -5,7 +5,12 @@ import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { useDispatchOrder, useDispatchSettings, useSyncTracking } from "@/hooks/useDispatch";
+import {
+  useDispatchOrder,
+  useDispatchSettings,
+  useGsLogin,
+  useManualDispatchNow,
+} from "@/hooks/useDispatch";
 
 import type { Order } from "@/types";
 
@@ -27,7 +32,8 @@ interface Props {
 export function DispatchPanel({ orders, isServerMode = false }: Props) {
   // 훅은 항상 최상단에서 호출 (Rules of Hooks)
   const { data: settingsData } = useDispatchSettings();
-  const syncMutation = useSyncTracking();
+  const manualNow = useManualDispatchNow();
+  const gsLogin = useGsLogin();
   const dispatchMutation = useDispatchOrder();
 
   const bookedOrders = orders.filter((o) => o.status === "booked");
@@ -52,17 +58,54 @@ export function DispatchPanel({ orders, isServerMode = false }: Props) {
 
   const isAutoMode = settingsData?.dispatch.autoMode ?? false;
 
-  function handleSyncTracking() {
-    syncMutation.mutate(undefined, {
-      onSuccess: (result) => {
-        if (result.tracked > 0) {
-          toast.success(result.message);
-        } else {
-          toast.info("새로운 운송장번호가 없습니다");
+  async function handleManualNow() {
+    try {
+      let res = await manualNow.mutateAsync();
+
+      // 세션 만료 → 로그인(캡챠) 후 1회 재시도
+      if (res.needLogin) {
+        toast.info(
+          "GS택배 세션 만료 — 브라우저에서 로그인(CAPTCHA)을 진행합니다",
+        );
+        const login = await gsLogin.mutateAsync();
+        if (!login.success) {
+          toast.error(login.message);
+          return;
         }
-      },
-      onError: (err) => toast.error(`동기화 실패: ${err.message}`),
-    });
+        res = await manualNow.mutateAsync();
+      }
+
+      if (res.needLogin) {
+        toast.error("로그인 후에도 세션 확인에 실패했습니다");
+        return;
+      }
+      if (!res.ok) {
+        toast.error(res.message ?? "발송처리에 실패했습니다");
+        return;
+      }
+
+      const dispatched = res.dispatched ?? 0;
+      const failedCount = res.failed?.length ?? 0;
+      const pending = res.pending ?? 0;
+
+      if (dispatched > 0) {
+        toast.success(`발송처리 ${dispatched}건 완료`);
+      }
+      if (failedCount > 0) {
+        toast.error(`발송 실패 ${failedCount}건`);
+      }
+      if (pending > 0) {
+        toast.info(`운송장 미배정 ${pending}건 — 잠시 후 다시 시도하세요`);
+      }
+      // ok:true인데 아무 항목도 없으면(예: 서버에서 이미 처리됨) 최소 1개 피드백 보장
+      if (dispatched === 0 && failedCount === 0 && pending === 0) {
+        toast.info(res.message ?? "처리할 발송 건이 없습니다");
+      }
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "발송처리에 실패했습니다",
+      );
+    }
   }
 
   function handleDispatch(orderId: string) {
@@ -78,17 +121,24 @@ export function DispatchPanel({ orders, isServerMode = false }: Props) {
         <div className="flex items-center justify-between flex-wrap gap-2">
           <CardTitle className="text-base">발송처리</CardTitle>
           <div className="flex items-center gap-2">
-            <Badge variant={isAutoMode ? "default" : "outline"} className="text-xs">
+            <Badge
+              variant={isAutoMode ? "default" : "outline"}
+              className="text-xs"
+            >
               {isAutoMode ? "자동 발송" : "수동 승인"}
             </Badge>
             {!isServerMode && (
               <Button
                 size="sm"
                 variant="outline"
-                onClick={handleSyncTracking}
-                disabled={syncMutation.isPending}
+                onClick={() => void handleManualNow()}
+                disabled={manualNow.isPending || gsLogin.isPending}
               >
-                {syncMutation.isPending ? "동기화 중..." : "운송장 동기화"}
+                {gsLogin.isPending
+                  ? "로그인 중..."
+                  : manualNow.isPending
+                    ? "발송 처리 중..."
+                    : "지금 발송처리"}
               </Button>
             )}
           </div>
@@ -102,7 +152,9 @@ export function DispatchPanel({ orders, isServerMode = false }: Props) {
               className="flex items-center justify-between gap-3 py-2 border-b last:border-0"
             >
               <div className="flex-1 min-w-0">
-                <div className="text-sm font-medium truncate">{group.recipientName}</div>
+                <div className="text-sm font-medium truncate">
+                  {group.recipientName}
+                </div>
                 {group.dispatchedAt && (
                   <div className="text-xs text-muted-foreground truncate">
                     {formatDispatchedAt(group.dispatchedAt)}
@@ -141,7 +193,9 @@ export function DispatchPanel({ orders, isServerMode = false }: Props) {
                     )}
                   </>
                 ) : (
-                  <span className="text-xs text-muted-foreground">운송장 대기 중...</span>
+                  <span className="text-xs text-muted-foreground">
+                    운송장 대기 중...
+                  </span>
                 )}
               </div>
             </div>
