@@ -15,6 +15,18 @@ export interface ReservationInfo {
 const COOKIES_PATH = path.join(process.cwd(), "data", "cookies.json");
 
 /**
+ * GS택배 HTTP 스크래핑 공용 헤더 (Cookie 제외).
+ * scrape-tracking과 session 프로브가 동일 헤더로 요청하도록 공유한다.
+ */
+export const GS_SCRAPE_HEADERS = {
+  "User-Agent":
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+  Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+  "Accept-Language": "ko-KR,ko;q=0.9",
+  Referer: "https://www.cvsnet.co.kr/",
+} as const;
+
+/**
  * GS택배 예약조회 페이지에서 운송장번호를 스크래핑한다.
  *
  * Playwright 대신 HTTP fetch + 쿠키를 사용하여
@@ -24,7 +36,7 @@ const COOKIES_PATH = path.join(process.cwd(), "data", "cookies.json");
  * @returns 매칭된 예약번호와 운송장번호 쌍 (운송장번호 없으면 trackingNo=null)
  */
 export async function scrapeTrackingNumbers(
-  targetReservationNos: string[]
+  targetReservationNos: string[],
 ): Promise<ReservationInfo[]> {
   if (targetReservationNos.length === 0) return [];
 
@@ -32,7 +44,7 @@ export async function scrapeTrackingNumbers(
   const cookieHeader = loadCookieHeader();
   if (!cookieHeader) {
     throw new Error(
-      "GS택배 쿠키가 없습니다. 로컬에서 로그인하여 쿠키를 동기화해주세요."
+      "GS택배 쿠키가 없습니다. 로컬에서 로그인하여 쿠키를 동기화해주세요.",
     );
   }
 
@@ -46,22 +58,14 @@ export async function scrapeTrackingNumbers(
 
   // HTTP로 예약 목록 페이지 가져오기
   const res = await fetch(GS_URLS.RESERVATION_LIST, {
-    headers: {
-      Cookie: cookieHeader,
-      "User-Agent":
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-      Accept:
-        "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-      "Accept-Language": "ko-KR,ko;q=0.9",
-      Referer: "https://www.cvsnet.co.kr/",
-    },
+    headers: { Cookie: cookieHeader, ...GS_SCRAPE_HEADERS },
     redirect: "manual",
   });
 
   // 302 리다이렉트 = 세션 만료
   if (res.status === 302 || res.status === 301) {
     throw new Error(
-      "GS택배 쿠키가 만료되었습니다. 로컬에서 로그인하여 쿠키를 동기화해주세요."
+      "GS택배 쿠키가 만료되었습니다. 로컬에서 로그인하여 쿠키를 동기화해주세요.",
     );
   }
 
@@ -74,7 +78,7 @@ export async function scrapeTrackingNumbers(
   // 로그인 상태 확인
   if (html.includes("비로그인") || html.includes("로그인이 필요")) {
     throw new Error(
-      "GS택배 쿠키가 만료되었습니다. 로컬에서 로그인하여 쿠키를 동기화해주세요."
+      "GS택배 쿠키가 만료되었습니다. 로컬에서 로그인하여 쿠키를 동기화해주세요.",
     );
   }
 
@@ -122,13 +126,13 @@ export async function scrapeTrackingNumbers(
     if (originalNo) {
       results.push({ reservationNo: originalNo, trackingNo });
       console.log(
-        `[scrape-tracking] ✅ 매칭: ${maskId(originalNo)} → ${trackingNo ? maskId(trackingNo) : "미배정"}`
+        `[scrape-tracking] ✅ 매칭: ${maskId(originalNo)} → ${trackingNo ? maskId(trackingNo) : "미배정"}`,
       );
     }
   }
 
   console.log(
-    `[scrape-tracking] HTTP 스크래핑 완료 — 행: ${rowCount}, 매칭: ${results.length}/${targetReservationNos.length}`
+    `[scrape-tracking] HTTP 스크래핑 완료 — 행: ${rowCount}, 매칭: ${results.length}/${targetReservationNos.length}`,
   );
 
   return results;
@@ -136,8 +140,9 @@ export async function scrapeTrackingNumbers(
 
 /**
  * 쿠키 파일에서 Cookie 헤더 문자열을 생성한다.
+ * session 프로브 등에서 재사용하기 위해 export한다.
  */
-function loadCookieHeader(): string | null {
+export function loadCookieHeader(): string | null {
   try {
     if (!fs.existsSync(COOKIES_PATH)) return null;
     const raw = fs.readFileSync(COOKIES_PATH, "utf-8");
