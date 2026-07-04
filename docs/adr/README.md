@@ -23,3 +23,4 @@ CLAUDE.md "설계 판단 기록 — ADR" 섹션 참조. 다음 중 2개 이상�
 | 번호 | 제목 | Status | 관련 이슈 |
 |------|------|--------|----------|
 | [0001](./0001-visit-pickup-dispatch.md) | 방문택배 자동 발송처리 — 폴링 트리거 + 마스킹 매칭 | Accepted | #59 |
+| [0003](./0003-manual-out-of-window-dispatch.md) | 윈도우 밖 수동 즉시 발송 — 로컬 트리거 + 서버 단독 발송 + 세션 live 프로브 | Accepted | #66 |
