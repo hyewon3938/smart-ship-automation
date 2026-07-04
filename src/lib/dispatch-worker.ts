@@ -121,6 +121,75 @@ export interface CheckAndDispatchResult {
 }
 
 /**
+ * 운송장번호가 있고 아직 발송 안 된 booked 그룹을 네이버로 발송처리한다.
+ * 워커(자동 모드 폴링)와 수동 즉시 발송 엔드포인트가 공유하는 발송 로직.
+ *
+ * `getBookedOrderGroups()`가 status='booked'만 반환하므로, 발송 완료되어
+ * dispatched로 바뀐 그룹은 다음 조회에서 빠져 이중발송을 막는다.
+ *
+ * @param orderIds 지정 시 해당 orderId 그룹만 발송 (미지정 시 pending 전체)
+ * @returns 발송 성공/실패한 orderId 목록
+ */
+export async function dispatchBookedGroups(orderIds?: string[]): Promise<{
+  dispatched: string[];
+  failed: { orderId: string; error: string }[];
+}> {
+  const groups = getBookedOrderGroups().filter(
+    (g) =>
+      g.trackingNumber &&
+      (!g.dispatchStatus || g.dispatchStatus === "pending_dispatch") &&
+      (!orderIds || orderIds.includes(g.orderId)),
+  );
+
+  const dispatched: string[] = [];
+  const failed: { orderId: string; error: string }[] = [];
+
+  for (const group of groups) {
+    const deliveryCompanyCode =
+      group.deliveryType === "nextDay"
+        ? getNextDayDeliveryCode()
+        : DELIVERY_COMPANY_CODES.domestic;
+
+    try {
+      const dispatchResult = await dispatchOrders({
+        productOrderIds: group.productOrderIds,
+        deliveryCompanyCode,
+        trackingNumber: group.trackingNumber!,
+      });
+
+      if (dispatchResult.success) {
+        updateDispatchStatus(group.orderId, "dispatched");
+        addBookingLog(
+          group.firstDbId,
+          "dispatch",
+          `네이버 발송처리 완료: ${group.trackingNumber}`,
+        );
+        dispatched.push(group.orderId);
+        console.log(
+          `[dispatch-worker] ✅ 발송처리 완료 — 주문: ${maskId(group.orderId)}`,
+        );
+      } else {
+        updateDispatchStatus(group.orderId, "dispatch_failed");
+        const errMsg = dispatchResult.error ?? "알 수 없는 오류";
+        addBookingLog(group.firstDbId, "error", `발송처리 실패: ${errMsg}`);
+        failed.push({ orderId: group.orderId, error: errMsg });
+        console.error(
+          `[dispatch-worker] ❌ 발송처리 실패 — ${maskId(group.orderId)}: ${errMsg}`,
+        );
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "알 수 없는 오류";
+      failed.push({ orderId: group.orderId, error: msg });
+      console.error(
+        `[dispatch-worker] ❌ 예외 — ${maskId(group.orderId)}: ${msg}`,
+      );
+    }
+  }
+
+  return { dispatched, failed };
+}
+
+/**
  * 1회 실행: booked 주문의 운송장번호 확인 → (자동 모드이면) 발송처리
  */
 export async function checkAndDispatch(): Promise<CheckAndDispatchResult> {
@@ -214,60 +283,12 @@ export async function checkAndDispatch(): Promise<CheckAndDispatchResult> {
         }
       }
 
-      // 4. 자동 모드일 때만 발송처리
+      // 4. 자동 모드일 때만 발송처리 (운송장 있고 아직 발송 안 된 그룹)
       if (isDispatchAutoMode()) {
-        // 5. 운송장번호 있고 아직 발송처리 안 된 그룹 처리
-        const freshGroups = getBookedOrderGroups();
-        const pendingDispatch = freshGroups.filter(
-          (g) =>
-            g.trackingNumber &&
-            (!g.dispatchStatus || g.dispatchStatus === "pending_dispatch"),
-        );
-
-        for (const group of pendingDispatch) {
-          try {
-            const deliveryCompanyCode =
-              group.deliveryType === "nextDay"
-                ? getNextDayDeliveryCode()
-                : DELIVERY_COMPANY_CODES.domestic;
-
-            const dispatchResult = await dispatchOrders({
-              productOrderIds: group.productOrderIds,
-              deliveryCompanyCode,
-              trackingNumber: group.trackingNumber!,
-            });
-
-            if (dispatchResult.success) {
-              updateDispatchStatus(group.orderId, "dispatched");
-              addBookingLog(
-                group.firstDbId,
-                "dispatch",
-                `네이버 발송처리 완료: ${group.trackingNumber}`,
-              );
-              result.dispatched++;
-              console.log(
-                `[dispatch-worker] ✅ 발송처리 완료 — 주문: ${maskId(group.orderId)}`,
-              );
-            } else {
-              updateDispatchStatus(group.orderId, "dispatch_failed");
-              const errMsg = dispatchResult.error ?? "알 수 없는 오류";
-              addBookingLog(
-                group.firstDbId,
-                "error",
-                `발송처리 실패: ${errMsg}`,
-              );
-              result.errors.push(`${group.orderId}: ${errMsg}`);
-              console.error(
-                `[dispatch-worker] ❌ 발송처리 실패 — ${maskId(group.orderId)}: ${errMsg}`,
-              );
-            }
-          } catch (err) {
-            const msg = err instanceof Error ? err.message : "알 수 없는 오류";
-            result.errors.push(`${group.orderId}: ${msg}`);
-            console.error(
-              `[dispatch-worker] ❌ 예외 — ${maskId(group.orderId)}: ${msg}`,
-            );
-          }
+        const { dispatched, failed } = await dispatchBookedGroups();
+        result.dispatched += dispatched.length;
+        for (const f of failed) {
+          result.errors.push(`${f.orderId}: ${f.error}`);
         }
       }
     }
