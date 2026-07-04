@@ -185,3 +185,29 @@ export async function syncTrackingNumbers(
   const res = await postToServer("/api/internal/tracking", { items });
   return res.ok;
 }
+
+/**
+ * 로컬에서 스크래핑한 운송장을 서버로 넘겨 **즉시 발송처리**를 요청한다.
+ * (운송장만 저장하고 워커에 위임하는 syncTrackingNumbers와 달리, 서버가 바로 발송)
+ *
+ * @returns 서버가 발송한 orderId 목록 + 실패 목록. 서버 연결/응답 실패 시 null.
+ */
+export async function syncDispatchNow(
+  items: Array<{ orderId: string; trackingNumber: string }>,
+): Promise<{
+  dispatched: string[];
+  failed: { orderId: string; error: string }[];
+} | null> {
+  if (items.length === 0) return { dispatched: [], failed: [] };
+
+  const res = await postToServer("/api/internal/dispatch-now", { items });
+  if (!res.ok || !res.body) return null;
+
+  const dispatched = Array.isArray(res.body.dispatched)
+    ? (res.body.dispatched as string[])
+    : [];
+  const failed = Array.isArray(res.body.failed)
+    ? (res.body.failed as { orderId: string; error: string }[])
+    : [];
+  return { dispatched, failed };
+}
