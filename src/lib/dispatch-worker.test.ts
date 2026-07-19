@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // dispatch-worker가 top-level import하는 모듈을 모두 모킹하여
 // 실제 DB(better-sqlite3)·네이버 API 로드를 방지한다.
@@ -8,6 +8,8 @@ const mocks = vi.hoisted(() => ({
   addBookingLog: vi.fn(),
   dispatchOrders: vi.fn(),
   getNextDayDeliveryCode: vi.fn(() => "HDEXP"),
+  scrapeTrackingNumbers: vi.fn(),
+  updateTrackingNumbers: vi.fn(),
 }));
 
 vi.mock("@/lib/orders", () => ({
@@ -20,7 +22,7 @@ vi.mock("@/lib/orders", () => ({
   getMatchedVisitReservationNos: vi.fn(() => []),
   getUncheckedDispatchedOrders: vi.fn(() => []),
   updateDeliveryStatus: vi.fn(),
-  updateTrackingNumbers: vi.fn(),
+  updateTrackingNumbers: mocks.updateTrackingNumbers,
 }));
 
 vi.mock("@/lib/naver/dispatch", () => ({
@@ -39,14 +41,14 @@ vi.mock("@/lib/settings", () => ({
 }));
 
 vi.mock("@/lib/gs-delivery/scrape-tracking", () => ({
-  scrapeTrackingNumbers: vi.fn(),
+  scrapeTrackingNumbers: mocks.scrapeTrackingNumbers,
 }));
 
 vi.mock("@/lib/gs-delivery/scrape-visit-pickup", () => ({
   scrapeVisitPickup: vi.fn(),
 }));
 
-import { dispatchBookedGroups } from "./dispatch-worker";
+import { checkAndDispatch, dispatchBookedGroups } from "./dispatch-worker";
 
 interface Group {
   orderId: string;
@@ -56,6 +58,7 @@ interface Group {
   dispatchStatus: string | null;
   deliveryType: string;
   productOrderIds: string[];
+  bookedAt: string | null;
 }
 
 function group(overrides: Partial<Group> = {}): Group {
@@ -67,6 +70,7 @@ function group(overrides: Partial<Group> = {}): Group {
     dispatchStatus: "pending_dispatch",
     deliveryType: "domestic",
     productOrderIds: ["po-1"],
+    bookedAt: null,
     ...overrides,
   };
 }
@@ -154,5 +158,69 @@ describe("dispatchBookedGroups", () => {
       "A",
       "dispatch_failed",
     );
+  });
+});
+
+describe("checkAndDispatch — 운송장 스크래핑 시간 게이트 (예약 후 1시간 하이브리드)", () => {
+  // UTC 기준 시각 → KST(+9) 변환
+  const KST_DAWN_3AM = new Date("2026-07-19T18:00:00Z"); // KST 07-20 03:00 (윈도우 밖)
+  const KST_NOON = new Date("2026-07-19T03:00:00Z"); // KST 07-19 12:00 (윈도우 안)
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.useFakeTimers();
+    mocks.dispatchOrders.mockResolvedValue({ success: true });
+    mocks.scrapeTrackingNumbers.mockResolvedValue([]);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("윈도우 밖(새벽)이라도 예약 후 1시간 이내 그룹이 있으면 스크래핑한다", async () => {
+    vi.setSystemTime(KST_DAWN_3AM);
+    const justBooked = new Date(Date.now() - 10 * 60 * 1000).toISOString(); // 10분 전
+    mocks.getBookedOrderGroups.mockReturnValue([
+      group({ orderId: "A", trackingNumber: null, bookedAt: justBooked }),
+    ]);
+
+    await checkAndDispatch();
+
+    expect(mocks.scrapeTrackingNumbers).toHaveBeenCalledOnce();
+  });
+
+  it("윈도우 밖(새벽)이고 예약 후 1시간이 지났으면 스크래핑하지 않는다", async () => {
+    vi.setSystemTime(KST_DAWN_3AM);
+    const oldBooked = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(); // 2시간 전
+    mocks.getBookedOrderGroups.mockReturnValue([
+      group({ orderId: "A", trackingNumber: null, bookedAt: oldBooked }),
+    ]);
+
+    await checkAndDispatch();
+
+    expect(mocks.scrapeTrackingNumbers).not.toHaveBeenCalled();
+  });
+
+  it("윈도우 안(낮)이면 예약 시각과 무관하게 스크래핑한다 (기존 동작 유지)", async () => {
+    vi.setSystemTime(KST_NOON);
+    const oldBooked = new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString(); // 5시간 전
+    mocks.getBookedOrderGroups.mockReturnValue([
+      group({ orderId: "A", trackingNumber: null, bookedAt: oldBooked }),
+    ]);
+
+    await checkAndDispatch();
+
+    expect(mocks.scrapeTrackingNumbers).toHaveBeenCalledOnce();
+  });
+
+  it("윈도우 밖 + bookedAt 없는(레거시) 그룹만 있으면 스크래핑하지 않는다", async () => {
+    vi.setSystemTime(KST_DAWN_3AM);
+    mocks.getBookedOrderGroups.mockReturnValue([
+      group({ orderId: "A", trackingNumber: null, bookedAt: null }),
+    ]);
+
+    await checkAndDispatch();
+
+    expect(mocks.scrapeTrackingNumbers).not.toHaveBeenCalled();
   });
 });

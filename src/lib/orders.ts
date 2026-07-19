@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, inArray, isNotNull, ne } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNotNull, ne, sql } from "drizzle-orm";
 
 import { db } from "@/lib/db";
 import { bookingLogs, orders } from "@/lib/db/schema";
@@ -95,12 +95,18 @@ export function updateOrderStatusBatch(
   bookingReservationNo?: string,
 ): void {
   if (ids.length === 0) return;
+  const now = new Date().toISOString();
   db.update(orders)
     .set({
       status,
       bookingResult: bookingResult ?? null,
       bookingReservationNo: bookingReservationNo ?? null,
-      updatedAt: new Date().toISOString(),
+      // 예약 완료(booked) 전환 시 최초 시각만 기록 — 예약 후 1시간 스크래핑의 기준점.
+      // COALESCE로 이미 값이 있으면 유지(재호출 시 1시간 창이 밀려나지 않게).
+      ...(status === "booked"
+        ? { bookedAt: sql`COALESCE(${orders.bookedAt}, ${now})` }
+        : {}),
+      updatedAt: now,
     })
     .where(inArray(orders.id, ids))
     .run();
@@ -154,6 +160,16 @@ export function updateGroupStatus(orderId: string, status: OrderStatus): void {
         status,
         dispatchStatus: "dispatched" as DispatchStatus,
         dispatchedAt: now,
+        updatedAt: now,
+      })
+      .where(eq(orders.orderId, orderId))
+      .run();
+  } else if (status === "booked") {
+    // booked 로 (되)돌릴 때 예약 시각 최초 1회 기록 (예약 후 1시간 스크래핑 기준점)
+    db.update(orders)
+      .set({
+        status,
+        bookedAt: sql`COALESCE(${orders.bookedAt}, ${now})`,
         updatedAt: now,
       })
       .where(eq(orders.orderId, orderId))
@@ -212,6 +228,7 @@ export function getBookedOrderGroups(): Array<{
   dispatchStatus: DispatchStatus | null;
   deliveryType: string;
   productOrderIds: string[];
+  bookedAt: string | null;
 }> {
   const bookedOrders = db
     .select()
@@ -234,6 +251,7 @@ export function getBookedOrderGroups(): Array<{
     dispatchStatus: items[0].dispatchStatus as DispatchStatus | null,
     deliveryType: items[0].selectedDeliveryType,
     productOrderIds: items.map((o) => o.productOrderId),
+    bookedAt: items[0].bookedAt,
   }));
 }
 
@@ -326,12 +344,14 @@ export function upsertOrdersFromLocal(
         continue;
       }
       // 이미 있으면 UPDATE (selectedDeliveryType 포함 — 로컬에서 변경했을 수 있음)
+      // bookedAt은 COALESCE로 최초 1회만 — 재동기화 때마다 예약 시각이 밀려나지 않게.
       db.update(orders)
         .set({
           status: "booked",
           selectedDeliveryType: item.selectedDeliveryType,
           bookingResult: bookingResult ?? null,
           bookingReservationNo: bookingReservationNo ?? null,
+          bookedAt: sql`COALESCE(${orders.bookedAt}, ${now})`,
           updatedAt: now,
         })
         .where(eq(orders.productOrderId, item.productOrderId))
@@ -359,6 +379,7 @@ export function upsertOrdersFromLocal(
           status: "booked",
           bookingResult: bookingResult ?? null,
           bookingReservationNo: bookingReservationNo ?? null,
+          bookedAt: now,
           createdAt: now,
           updatedAt: now,
         })
@@ -423,12 +444,17 @@ export function updateOrdersByOrderId(
   bookingResult?: string,
   bookingReservationNo?: string,
 ): void {
+  const now = new Date().toISOString();
   db.update(orders)
     .set({
       status,
       bookingResult: bookingResult ?? null,
       bookingReservationNo: bookingReservationNo ?? null,
-      updatedAt: new Date().toISOString(),
+      // booked 전환 시 예약 시각 최초 1회 기록 (예약 후 1시간 스크래핑 기준점)
+      ...(status === "booked"
+        ? { bookedAt: sql`COALESCE(${orders.bookedAt}, ${now})` }
+        : {}),
+      updatedAt: now,
     })
     .where(
       and(
@@ -671,6 +697,7 @@ export function applyVisitDispatchInfo(infos: VisitDispatchInfo[]): {
           bookingReservationNo: info.reservationNo,
           trackingNumber: line.trackingNo,
           dispatchStatus: "pending_dispatch" as DispatchStatus,
+          bookedAt: sql`COALESCE(${orders.bookedAt}, ${now})`,
           updatedAt: now,
         })
         .where(inArray(orders.id, group.allDbIds))

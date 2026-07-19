@@ -38,6 +38,15 @@ const SCRAPE_START_HOUR = 8; // 오전 8시
 const SCRAPE_END_HOUR = 18; // 오후 6시
 
 /**
+ * 예약 완료(booked) 후 이 시간 이내인 주문은 시간 윈도우(8~18시)와 무관하게 스크래핑한다.
+ *
+ * 목적: 아침 일찍/밤 늦게 예약해도 예약 직후(GS 세션이 아직 살아있을 때) 운송장을 잡는다.
+ * 1시간이 지난 주문은 다시 기존 시간 윈도우로만 스크래핑되므로,
+ * 운송장이 영영 안 뜨는 주문(예약 실패 등)에 대한 무한 스크래핑을 막는다.
+ */
+const RECENT_BOOKING_WINDOW_MS = 60 * 60 * 1000; // 60분
+
+/**
  * 방문택배 GS 상세페이지 재요청 throttle.
  *
  * PR #60 직후 dispatch-worker가 매 폴링마다 `scrapeVisitPickup([])` 호출 →
@@ -48,7 +57,7 @@ const SCRAPE_END_HOUR = 18; // 오후 6시
  *   - DB 기반 known: getMatchedVisitReservationNos() — 이미 매칭 완료된 거
  *   - 메모리 기반 recent: 매칭 실패했어도 같은 사이클에서 반복 fetch 방지
  *
- * 메모리 캐시는 PM2 재시작 시 비어 폴링 윈도우(11~18 KST) 안에선 자동으로
+ * 메모리 캐시는 PM2 재시작 시 비어 폴링 윈도우(8~18 KST) 안에선 자동으로
  * 자기복구 (다음 사이클부터 다시 채워짐).
  */
 const recentlyAttemptedVisits = new Map<string, number>();
@@ -84,6 +93,19 @@ function isWithinScrapeWindow(): boolean {
     now.toLocaleString("en-US", { timeZone: "Asia/Seoul" }),
   ).getHours();
   return kstHour >= SCRAPE_START_HOUR && kstHour < SCRAPE_END_HOUR;
+}
+
+/** booked 그룹 중 예약 완료 1시간 이내인 게 하나라도 있는지 (시간 윈도우 우회 조건) */
+function hasRecentlyBookedGroup(
+  groups: Array<{ bookedAt: string | null }>,
+): boolean {
+  const now = Date.now();
+  return groups.some((g) => {
+    if (!g.bookedAt) return false;
+    const bookedMs = new Date(g.bookedAt).getTime();
+    if (Number.isNaN(bookedMs)) return false;
+    return now - bookedMs < RECENT_BOOKING_WINDOW_MS;
+  });
 }
 
 /** 폴링 시작 (앱 초기화 시 호출) */
@@ -248,8 +270,12 @@ export async function checkAndDispatch(): Promise<CheckAndDispatchResult> {
         .map((g) => g.bookingReservationNo)
         .filter((n): n is string => !!n);
 
-      // 3. 예약번호가 있는 주문만 운송장번호 스크래핑 (11시~18시만)
-      if (reservationNos.length > 0 && isWithinScrapeWindow()) {
+      // 3. 예약번호가 있는 주문만 운송장번호 스크래핑.
+      //    허용 조건: 기존 시간 윈도우(8~18시 KST) 안이거나,
+      //    예약 후 1시간 이내 그룹이 있으면(시간 무관 — 예약 직후 세션이 살아있을 때 집중 확인).
+      const scrapeAllowed =
+        isWithinScrapeWindow() || hasRecentlyBookedGroup(bookedGroups);
+      if (reservationNos.length > 0 && scrapeAllowed) {
         try {
           const trackingResults = await scrapeTrackingNumbers(reservationNos);
 

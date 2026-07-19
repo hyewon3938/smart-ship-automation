@@ -30,6 +30,8 @@ export const orders = sqliteTable("orders", {
     .default("domestic"),
   bookingResult: text("booking_result"),
   bookingReservationNo: text("booking_reservation_no"),
+  /** 예약 완료(booked 전환) 시각 — "예약 후 1시간 스크래핑" 판단 기준점. 최초 1회만 기록 */
+  bookedAt: text("booked_at"),
   trackingNumber: text("tracking_number"),
   dispatchStatus: text("dispatch_status", {
     enum: ["pending_dispatch", "dispatched", "dispatch_failed"],
