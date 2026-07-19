@@ -367,3 +367,30 @@
   `api/internal/dispatch-now`(서버 즉시 발송)
 - 단위 테스트 6건 (`dispatchBookedGroups`)
 - ADR-0003 영구 결정 기록
+
+## 2026-07-19 — 예약 후 1시간 하이브리드 스크래핑 + 수동발송 버튼 재연결
+
+### 배경
+- 절대 시각 윈도우(8\~18시)만으로는 밤·이른 아침 예약을 자동으로 못 잡음. 예약 직후는 GS
+  세션이 살아있어 스크래핑 성공률이 가장 높은데, 그 창이 윈도우 밖이면 놓쳤다
+- ADR-0003 수동 "지금 발송처리" 버튼이 이 케이스를 담당했으나 매번 수동 + 그 버튼이 든
+  `DispatchPanel`이 #28 이후 어디에도 마운트되지 않아 실제로는 화면에서 쓸 수 없었다
+
+### 하이브리드 스크래핑
+- 스크래핑 게이트를 `isWithinScrapeWindow() || hasRecentlyBookedGroup()`로 변경 — 기존
+  윈도우 유지 + 예약 후 1시간 이내 그룹이 있으면 시간 무관 스크래핑
+- `orders.bookedAt` 컬럼 신설(예약 완료 최초 시각). booked 전환 지점 전부에서
+  `COALESCE(booked_at, now)`로 1회만 기록 → 재동기화로 1시간 창이 밀리지 않게
+- `DispatchPanel`을 로컬 대시보드에 재연결 — 자동화가 못 잡는 예외용 수동 백업으로 유지
+
+### 기술적 결정 (ADR-0004)
+- **상대 창 + 절대 윈도우 병행**: 1시간 내 미배정 건은 낮 윈도우가 이어받아 방치 없음.
+  1시간 지나면 상대 창이 닫혀 booked 잔재에 대한 무한 스크래핑 방지
+- **전용 컬럼 신설**: `updatedAt`은 후속 write마다 덮어써져 예약 시각으로 못 씀
+- **방문택배는 범위 밖**: `booking` 상태라 `bookedAt`이 없어 절대 윈도우 유지
+
+### 산출물
+- `orders.bookedAt` 컬럼(런타임 `addColumnIfNotExists` 반영), `hasRecentlyBookedGroup`
+  게이트, `DispatchPanel` 로컬 재연결
+- 단위 테스트 4건 추가 (checkAndDispatch 시간 게이트, fake timer 기반)
+- ADR-0004 영구 결정 기록

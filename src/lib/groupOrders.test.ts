@@ -25,6 +25,7 @@ function makeOrder(overrides: Partial<Order> = {}): Order {
     selectedDeliveryType: "domestic",
     bookingResult: null,
     bookingReservationNo: null,
+    bookedAt: null,
     trackingNumber: null,
     dispatchStatus: null,
     dispatchedAt: null,
@@ -84,14 +85,34 @@ describe("groupOrdersByOrderId", () => {
 
   it("isNextDayEligible은 그룹 내 전체가 eligible일 때만 true", () => {
     const allEligible = [
-      makeOrder({ id: 1, orderId: "A", productOrderId: "001", isNextDayEligible: true }),
-      makeOrder({ id: 2, orderId: "A", productOrderId: "002", isNextDayEligible: true }),
+      makeOrder({
+        id: 1,
+        orderId: "A",
+        productOrderId: "001",
+        isNextDayEligible: true,
+      }),
+      makeOrder({
+        id: 2,
+        orderId: "A",
+        productOrderId: "002",
+        isNextDayEligible: true,
+      }),
     ];
     expect(groupOrdersByOrderId(allEligible)[0].isNextDayEligible).toBe(true);
 
     const mixed = [
-      makeOrder({ id: 1, orderId: "B", productOrderId: "001", isNextDayEligible: true }),
-      makeOrder({ id: 2, orderId: "B", productOrderId: "002", isNextDayEligible: false }),
+      makeOrder({
+        id: 1,
+        orderId: "B",
+        productOrderId: "001",
+        isNextDayEligible: true,
+      }),
+      makeOrder({
+        id: 2,
+        orderId: "B",
+        productOrderId: "002",
+        isNextDayEligible: false,
+      }),
     ];
     expect(groupOrdersByOrderId(mixed)[0].isNextDayEligible).toBe(false);
   });

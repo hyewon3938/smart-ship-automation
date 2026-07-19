@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { useEffect, useRef } from "react";
 
 import { BookingConfirmDialog } from "@/components/BookingConfirmDialog";
+import { DispatchPanel } from "@/components/DispatchPanel";
 import { VisitPickupConfirmDialog } from "@/components/VisitPickupConfirmDialog";
 import { OrderTable } from "@/components/OrderTable";
 import { OrderTableSkeleton } from "@/components/OrderTableSkeleton";
@@ -23,7 +24,12 @@ import {
   useUpdateGroupStatus,
 } from "@/hooks/useOrders";
 
-import { countGroupsByServerFilter, countGroupsByStatus, filterOrdersByServerFilter, groupOrdersByOrderId } from "@/lib/groupOrders";
+import {
+  countGroupsByServerFilter,
+  countGroupsByStatus,
+  filterOrdersByServerFilter,
+  groupOrdersByOrderId,
+} from "@/lib/groupOrders";
 
 import type { DeliveryType, OrderStatus, ServerFilter } from "@/types";
 
@@ -31,9 +37,11 @@ const isServerMode = process.env.NEXT_PUBLIC_DEPLOY_MODE === "server";
 
 export function Dashboard() {
   const [statusFilter, setStatusFilter] = useState<OrderStatus | undefined>(
-    isServerMode ? undefined : "pending"
+    isServerMode ? undefined : "pending",
   );
-  const [serverFilter, setServerFilter] = useState<ServerFilter | undefined>("waiting");
+  const [serverFilter, setServerFilter] = useState<ServerFilter | undefined>(
+    "waiting",
+  );
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [isBookingDialogOpen, setIsBookingDialogOpen] = useState(false);
   const [isVisitPickupDialogOpen, setIsVisitPickupDialogOpen] = useState(false);
@@ -45,7 +53,9 @@ export function Dashboard() {
   const bookingPhase = useRef<"idle" | "waiting" | "monitoring">("idle");
   const queryClient = useQueryClient();
 
-  const { data, isLoading, isError } = useOrders(isServerMode ? undefined : statusFilter);
+  const { data, isLoading, isError } = useOrders(
+    isServerMode ? undefined : statusFilter,
+  );
   const syncMutation = useSyncOrders();
   const updateGroupStatusMutation = useUpdateGroupStatus();
   const updateGroupDeliveryTypeMutation = useUpdateGroupDeliveryType();
@@ -58,7 +68,10 @@ export function Dashboard() {
     queryKey: ["gs-login-status"],
     queryFn: async () => {
       const res = await fetch("/api/gs-login/status");
-      return res.json() as Promise<{ valid: boolean; lastSyncAt: string | null }>;
+      return res.json() as Promise<{
+        valid: boolean;
+        lastSyncAt: string | null;
+      }>;
     },
     refetchInterval: 60_000, // 1분마다 재확인
   });
@@ -110,7 +123,9 @@ export function Dashboard() {
     }
   }, [allOrders, queryClient]);
 
-  function handleStatusFilterChange(status: OrderStatus | ServerFilter | undefined) {
+  function handleStatusFilterChange(
+    status: OrderStatus | ServerFilter | undefined,
+  ) {
     setStatusFilter(status as OrderStatus | undefined);
     setSelectedIds(new Set()); // 필터 변경 시 선택 초기화
   }
@@ -119,7 +134,7 @@ export function Dashboard() {
     syncMutation.mutate(undefined, {
       onSuccess: (result) => {
         toast.success(
-          `동기화 완료: ${result.created}건 추가, ${result.updated}건 갱신`
+          `동기화 완료: ${result.created}건 추가, ${result.updated}건 갱신`,
         );
       },
       onError: (error) => {
@@ -130,7 +145,9 @@ export function Dashboard() {
 
   async function handleGsLogin() {
     setIsLoggingIn(true);
-    toast.info("브라우저에서 GS택배 로그인을 진행합니다. CAPTCHA를 처리해주세요.");
+    toast.info(
+      "브라우저에서 GS택배 로그인을 진행합니다. CAPTCHA를 처리해주세요.",
+    );
     try {
       const res = await fetch("/api/gs-login", { method: "POST" });
       const data = (await res.json()) as { success: boolean; message: string };
@@ -149,7 +166,7 @@ export function Dashboard() {
 
   function handleGroupDeliveryTypeChange(
     orderId: string,
-    deliveryType: DeliveryType
+    deliveryType: DeliveryType,
   ) {
     updateGroupDeliveryTypeMutation.mutate(
       { orderId, deliveryType },
@@ -157,7 +174,7 @@ export function Dashboard() {
         onError: (error) => {
           toast.error(error.message);
         },
-      }
+      },
     );
   }
 
@@ -171,7 +188,7 @@ export function Dashboard() {
         onError: (error) => {
           toast.error(error.message);
         },
-      }
+      },
     );
   }
 
@@ -247,7 +264,9 @@ export function Dashboard() {
                     : "text-muted-foreground"
               }`}
             >
-              {isLoggingIn ? "로그인 중..." : `GS로그인${isCookieExpired ? " (만료)" : ""}`}
+              {isLoggingIn
+                ? "로그인 중..."
+                : `GS로그인${isCookieExpired ? " (만료)" : ""}`}
             </button>
           )}
           <Link
@@ -326,7 +345,9 @@ export function Dashboard() {
             {selectedIds.size > 0 ? (
               <span>
                 <strong>{selectedGroups.length}건</strong> 선택됨
-                <span className="ml-1 text-xs">({selectedIds.size}개 상품)</span>
+                <span className="ml-1 text-xs">
+                  ({selectedIds.size}개 상품)
+                </span>
               </span>
             ) : (
               `대기 ${statusCounts.pending}건`
@@ -369,23 +390,30 @@ export function Dashboard() {
         </div>
       )}
 
+      {/* 발송처리 현황 + 수동 즉시 발송 (로컬 모드만) — booked 주문 있을 때만 표시 */}
+      {!isServerMode && <DispatchPanel orders={allOrders} />}
+
       {/* 예약 확인 다이얼로그 (로컬 모드만) */}
-      {!isServerMode && <BookingConfirmDialog
-        open={isBookingDialogOpen}
-        onOpenChange={setIsBookingDialogOpen}
-        selectedOrders={selectedOrders}
-        isPending={bookMutation.isPending}
-        onConfirm={handleBookConfirm}
-      />}
+      {!isServerMode && (
+        <BookingConfirmDialog
+          open={isBookingDialogOpen}
+          onOpenChange={setIsBookingDialogOpen}
+          selectedOrders={selectedOrders}
+          isPending={bookMutation.isPending}
+          onConfirm={handleBookConfirm}
+        />
+      )}
 
       {/* 방문택배 확인 다이얼로그 (로컬 모드만) */}
-      {!isServerMode && <VisitPickupConfirmDialog
-        open={isVisitPickupDialogOpen}
-        onOpenChange={setIsVisitPickupDialogOpen}
-        selectedOrders={selectedOrders}
-        isPending={visitPickupMutation.isPending}
-        onConfirm={handleVisitPickupConfirm}
-      />}
+      {!isServerMode && (
+        <VisitPickupConfirmDialog
+          open={isVisitPickupDialogOpen}
+          onOpenChange={setIsVisitPickupDialogOpen}
+          selectedOrders={selectedOrders}
+          isPending={visitPickupMutation.isPending}
+          onConfirm={handleVisitPickupConfirm}
+        />
+      )}
     </div>
   );
 }

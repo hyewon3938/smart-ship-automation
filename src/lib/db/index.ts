@@ -44,5 +44,6 @@ function addColumnIfNotExists(
 addColumnIfNotExists("orders", "tracking_number", "TEXT");
 addColumnIfNotExists("orders", "dispatch_status", "TEXT");
 addColumnIfNotExists("orders", "dispatched_at", "TEXT");
+addColumnIfNotExists("orders", "booked_at", "TEXT");
 
 export const db = drizzle(sqlite, { schema });
