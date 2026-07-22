@@ -2,6 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
+import { requestJson } from "@/lib/api-client";
 import type { DispatchSettings } from "@/types";
 
 interface DispatchWorkerStatus {
@@ -40,11 +41,8 @@ interface GsLoginResult {
 export function useDispatchSettings() {
   return useQuery<DispatchSettingsResponse>({
     queryKey: ["dispatch", "settings"],
-    queryFn: async () => {
-      const res = await fetch("/api/dispatch/settings");
-      if (!res.ok) throw new Error("발송 설정 조회 실패");
-      return res.json();
-    },
+    queryFn: () =>
+      requestJson<DispatchSettingsResponse>("/api/dispatch/settings"),
     refetchInterval: 30_000, // 30초마다 워커 상태 갱신
   });
 }
@@ -57,18 +55,15 @@ export function useUpdateDispatchSettings() {
     Error,
     Partial<DispatchSettings>
   >({
-    mutationFn: async (data) => {
-      const res = await fetch("/api/dispatch/settings", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-      });
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || "설정 저장 실패");
-      }
-      return res.json();
-    },
+    mutationFn: (data) =>
+      requestJson<{ message: string; dispatch: DispatchSettings }>(
+        "/api/dispatch/settings",
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(data),
+        },
+      ),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["dispatch", "settings"] });
     },
@@ -79,16 +74,10 @@ export function useUpdateDispatchSettings() {
 export function useSyncTracking() {
   const queryClient = useQueryClient();
   return useMutation<SyncTrackingResult>({
-    mutationFn: async () => {
-      const res = await fetch("/api/dispatch/sync-tracking", {
+    mutationFn: () =>
+      requestJson<SyncTrackingResult>("/api/dispatch/sync-tracking", {
         method: "POST",
-      });
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || "동기화 실패");
-      }
-      return res.json();
-    },
+      }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["orders"] });
     },
@@ -99,18 +88,12 @@ export function useSyncTracking() {
 export function useDispatchOrder() {
   const queryClient = useQueryClient();
   return useMutation<{ message: string; orderId: string }, Error, string>({
-    mutationFn: async (orderId) => {
-      const res = await fetch("/api/dispatch", {
+    mutationFn: (orderId) =>
+      requestJson<{ message: string; orderId: string }>("/api/dispatch", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ orderId }),
-      });
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || "발송처리 실패");
-      }
-      return res.json();
-    },
+      }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["orders"] });
     },
@@ -124,14 +107,10 @@ export function useDispatchOrder() {
 export function useManualDispatchNow() {
   const queryClient = useQueryClient();
   return useMutation<ManualDispatchNowResult>({
-    mutationFn: async () => {
-      const res = await fetch("/api/dispatch/manual-now", { method: "POST" });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.error || err.message || "발송처리 실패");
-      }
-      return res.json();
-    },
+    mutationFn: () =>
+      requestJson<ManualDispatchNowResult>("/api/dispatch/manual-now", {
+        method: "POST",
+      }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["orders"] });
     },
@@ -141,10 +120,7 @@ export function useManualDispatchNow() {
 /** GS택배 로그인 (로컬 Playwright headed — 캡챠는 사용자가 처리) */
 export function useGsLogin() {
   return useMutation<GsLoginResult>({
-    mutationFn: async () => {
-      const res = await fetch("/api/gs-login", { method: "POST" });
-      if (!res.ok) throw new Error("로그인 요청 실패");
-      return res.json();
-    },
+    mutationFn: () =>
+      requestJson<GsLoginResult>("/api/gs-login", { method: "POST" }),
   });
 }

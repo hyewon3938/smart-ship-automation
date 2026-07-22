@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { requestJson } from "@/lib/api-client";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -21,22 +22,15 @@ export default function LoginPage() {
     setIsPending(true);
 
     try {
-      const res = await fetch("/api/auth/login", {
+      await requestJson<{ success: boolean }>("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username, password }),
       });
-
-      const data = (await res.json()) as { success?: boolean; error?: string };
-
-      if (res.ok && data.success) {
-        router.push("/");
-        router.refresh();
-      } else {
-        setError(data.error ?? "로그인에 실패했습니다.");
-      }
-    } catch {
-      setError("서버에 연결할 수 없습니다.");
+      router.push("/");
+      router.refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "로그인에 실패했습니다.");
     } finally {
       setIsPending(false);
     }
@@ -73,9 +67,7 @@ export default function LoginPage() {
                 required
               />
             </div>
-            {error && (
-              <p className="text-sm text-destructive">{error}</p>
-            )}
+            {error && <p className="text-sm text-destructive">{error}</p>}
             <Button type="submit" className="w-full" disabled={isPending}>
               {isPending ? "로그인 중..." : "로그인"}
             </Button>
