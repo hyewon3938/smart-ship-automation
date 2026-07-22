@@ -30,6 +30,7 @@ import {
   filterOrdersByServerFilter,
   groupOrdersByOrderId,
 } from "@/lib/groupOrders";
+import { requestJson } from "@/lib/api-client";
 
 import type { DeliveryType, OrderStatus, ServerFilter } from "@/types";
 
@@ -66,13 +67,10 @@ export function Dashboard() {
   // GS택배 쿠키 유효성 확인 (만료 시 로그인 배너 표시)
   const cookieStatusQuery = useQuery({
     queryKey: ["gs-login-status"],
-    queryFn: async () => {
-      const res = await fetch("/api/gs-login/status");
-      return res.json() as Promise<{
-        valid: boolean;
-        lastSyncAt: string | null;
-      }>;
-    },
+    queryFn: () =>
+      requestJson<{ valid: boolean; lastSyncAt: string | null }>(
+        "/api/gs-login/status",
+      ),
     refetchInterval: 60_000, // 1분마다 재확인
   });
   const isCookieExpired = cookieStatusQuery.data?.valid === false;
@@ -149,16 +147,18 @@ export function Dashboard() {
       "브라우저에서 GS택배 로그인을 진행합니다. CAPTCHA를 처리해주세요.",
     );
     try {
-      const res = await fetch("/api/gs-login", { method: "POST" });
-      const data = (await res.json()) as { success: boolean; message: string };
+      const data = await requestJson<{ success: boolean; message: string }>(
+        "/api/gs-login",
+        { method: "POST" },
+      );
       if (data.success) {
         toast.success(data.message);
         void cookieStatusQuery.refetch();
       } else {
         toast.error(data.message);
       }
-    } catch {
-      toast.error("로그인 요청 실패");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "로그인 요청 실패");
     } finally {
       setIsLoggingIn(false);
     }

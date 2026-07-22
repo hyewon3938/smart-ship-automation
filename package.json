@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "rm -f .next/dev/lock && next dev",
+    "dev": "node scripts/predev.mjs && next dev",
     "build": "next build && bash scripts/copy-standalone-assets.sh",
     "start": "next start",
     "lint": "eslint",
