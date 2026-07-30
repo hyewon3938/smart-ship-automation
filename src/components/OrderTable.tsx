@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ChevronDown, ChevronRight, ScrollText } from "lucide-react";
+import { ChevronDown, ChevronRight, ScrollText, Trash2 } from "lucide-react";
 
 import { BookingLogDialog } from "@/components/BookingLogDialog";
 
@@ -24,7 +24,13 @@ import {
 import { StatusBadge } from "@/components/StatusBadge";
 import { getGroupStatus, groupOrdersByOrderId } from "@/lib/groupOrders";
 
-import type { DeliveryType, DeliveryTrackingStatus, Order, OrderGroup, OrderStatus } from "@/types";
+import type {
+  DeliveryType,
+  DeliveryTrackingStatus,
+  Order,
+  OrderGroup,
+  OrderStatus,
+} from "@/types";
 
 interface OrderTableProps {
   orders: Order[];
@@ -32,6 +38,11 @@ interface OrderTableProps {
   onSelectedChange: (ids: Set<number>) => void;
   onGroupDeliveryTypeChange: (orderId: string, type: DeliveryType) => void;
   onGroupStatusChange: (orderId: string, status: OrderStatus) => void;
+  /**
+   * 지정 시 그룹별 삭제 버튼 표시 (로컬 모드 전용).
+   * booking/dispatched 상태 그룹에는 버튼이 나오지 않는다.
+   */
+  onGroupDelete?: (group: OrderGroup) => void;
   /** false로 설정하면 체크박스 컬럼 숨김 (서버 모드) */
   selectable?: boolean;
 }
@@ -42,7 +53,11 @@ const DELIVERY_TYPE_LABELS: Record<string, string> = {
 };
 
 /** 배지로만 표시 (상태 변경 불가 최종 상태) */
-const NON_EDITABLE_BADGE_STATUSES = new Set(["booking", "dispatched", "skipped"]);
+const NON_EDITABLE_BADGE_STATUSES = new Set([
+  "booking",
+  "dispatched",
+  "skipped",
+]);
 
 /** 체크박스 선택 가능한 상태 (pending + failed = 재시도 가능) */
 const SELECTABLE_STATUSES = new Set(["pending", "failed"]);
@@ -64,13 +79,13 @@ function getGroupTotalPrice(orders: Order[]): number {
   return orders.reduce((sum, o) => sum + (o.totalPrice ?? 0), 0);
 }
 
-
 export function OrderTable({
   orders,
   selectedIds,
   onSelectedChange,
   onGroupDeliveryTypeChange,
   onGroupStatusChange,
+  onGroupDelete,
   selectable = true,
 }: OrderTableProps) {
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
@@ -80,12 +95,15 @@ export function OrderTable({
   const groups = useMemo(() => groupOrdersByOrderId(orders), [orders]);
 
   // 전체 선택 로직 (pending 또는 failed 주문 = 예약 가능 대상)
-  const selectableOrders = orders.filter((o) => SELECTABLE_STATUSES.has(o.status));
+  const selectableOrders = orders.filter((o) =>
+    SELECTABLE_STATUSES.has(o.status),
+  );
   const allSelectableSelected =
     selectableOrders.length > 0 &&
     selectableOrders.every((o) => selectedIds.has(o.id));
   const someSelectableSelected =
-    selectableOrders.some((o) => selectedIds.has(o.id)) && !allSelectableSelected;
+    selectableOrders.some((o) => selectedIds.has(o.id)) &&
+    !allSelectableSelected;
 
   function handleSelectAll(checked: boolean) {
     if (checked) {
@@ -136,73 +154,77 @@ export function OrderTable({
 
   return (
     <>
-    <div className="border rounded-lg overflow-hidden">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            {selectable && (
-              <TableHead className="w-10">
-                <Checkbox
-                  checked={allSelectableSelected}
-                  indeterminate={someSelectableSelected}
-                  onCheckedChange={handleSelectAll}
-                  disabled={selectableOrders.length === 0}
-                  aria-label="전체 선택"
-                />
-              </TableHead>
-            )}
-            <TableHead className="w-8" />
-            <TableHead className="w-24 min-w-[96px]">수령인</TableHead>
-            <TableHead>배송지</TableHead>
-            <TableHead className="w-28">택배유형</TableHead>
-            <TableHead className="w-20">내일배송</TableHead>
-            <TableHead className="w-28 text-right">상품/금액</TableHead>
-            <TableHead className="w-24">상태</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {groups.map((group) => {
-            const isExpanded = expandedGroups.has(group.orderId);
-            const selectableInGroup = group.orders.filter(
-              (o) => SELECTABLE_STATUSES.has(o.status)
-            );
-            const allGroupPendingSelected =
-              selectableInGroup.length > 0 &&
-              selectableInGroup.every((o) => selectedIds.has(o.id));
-            const someGroupPendingSelected =
-              selectableInGroup.some((o) => selectedIds.has(o.id)) &&
-              !allGroupPendingSelected;
-            const fullAddress = `${group.recipientAddress} ${group.recipientAddressDetail ?? ""}`.trim();
+      <div className="border rounded-lg overflow-hidden">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              {selectable && (
+                <TableHead className="w-10">
+                  <Checkbox
+                    checked={allSelectableSelected}
+                    indeterminate={someSelectableSelected}
+                    onCheckedChange={handleSelectAll}
+                    disabled={selectableOrders.length === 0}
+                    aria-label="전체 선택"
+                  />
+                </TableHead>
+              )}
+              <TableHead className="w-8" />
+              <TableHead className="w-24 min-w-[96px]">수령인</TableHead>
+              <TableHead>배송지</TableHead>
+              <TableHead className="w-28">택배유형</TableHead>
+              <TableHead className="w-20">내일배송</TableHead>
+              <TableHead className="w-28 text-right">상품/금액</TableHead>
+              <TableHead className="w-24">상태</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {groups.map((group) => {
+              const isExpanded = expandedGroups.has(group.orderId);
+              const selectableInGroup = group.orders.filter((o) =>
+                SELECTABLE_STATUSES.has(o.status),
+              );
+              const allGroupPendingSelected =
+                selectableInGroup.length > 0 &&
+                selectableInGroup.every((o) => selectedIds.has(o.id));
+              const someGroupPendingSelected =
+                selectableInGroup.some((o) => selectedIds.has(o.id)) &&
+                !allGroupPendingSelected;
+              const fullAddress =
+                `${group.recipientAddress} ${group.recipientAddressDetail ?? ""}`.trim();
 
-            return (
-              <GroupRows
-                key={group.orderId}
-                group={group}
-                isExpanded={isExpanded}
-                allGroupPendingSelected={allGroupPendingSelected}
-                someGroupPendingSelected={someGroupPendingSelected}
-                hasSelectable={selectableInGroup.length > 0}
-                fullAddress={fullAddress}
-                selectable={selectable}
-                onToggle={() => handleToggleGroup(group.orderId)}
-                onGroupCheck={(checked) =>
-                  handleGroupCheckChange(group, checked)
-                }
-                onGroupDeliveryTypeChange={onGroupDeliveryTypeChange}
-                onGroupStatusChange={onGroupStatusChange}
-                onViewLogs={handleViewLogs}
-              />
-            );
-          })}
-        </TableBody>
-      </Table>
-    </div>
-    <BookingLogDialog
-      orderId={logDialogOrderId}
-      naverOrderId={logDialogNaverOrderId}
-      open={logDialogOrderId !== null}
-      onOpenChange={(open) => { if (!open) setLogDialogOrderId(null); }}
-    />
+              return (
+                <GroupRows
+                  key={group.orderId}
+                  group={group}
+                  isExpanded={isExpanded}
+                  allGroupPendingSelected={allGroupPendingSelected}
+                  someGroupPendingSelected={someGroupPendingSelected}
+                  hasSelectable={selectableInGroup.length > 0}
+                  fullAddress={fullAddress}
+                  selectable={selectable}
+                  onToggle={() => handleToggleGroup(group.orderId)}
+                  onGroupCheck={(checked) =>
+                    handleGroupCheckChange(group, checked)
+                  }
+                  onGroupDeliveryTypeChange={onGroupDeliveryTypeChange}
+                  onGroupStatusChange={onGroupStatusChange}
+                  onGroupDelete={onGroupDelete}
+                  onViewLogs={handleViewLogs}
+                />
+              );
+            })}
+          </TableBody>
+        </Table>
+      </div>
+      <BookingLogDialog
+        orderId={logDialogOrderId}
+        naverOrderId={logDialogNaverOrderId}
+        open={logDialogOrderId !== null}
+        onOpenChange={(open) => {
+          if (!open) setLogDialogOrderId(null);
+        }}
+      />
     </>
   );
 }
@@ -220,21 +242,23 @@ interface GroupRowsProps {
   onGroupCheck: (checked: boolean) => void;
   onGroupDeliveryTypeChange: (orderId: string, type: DeliveryType) => void;
   onGroupStatusChange: (orderId: string, status: OrderStatus) => void;
+  onGroupDelete?: (group: OrderGroup) => void;
   onViewLogs: (firstDbId: number, naverOrderId: string) => void;
 }
 
 /** 그룹 내 배송 추적 상태 (네이버 API 기반, 가장 진행된 상태 반환) */
-function getGroupDeliveryStatus(orders: Order[]): DeliveryTrackingStatus | null {
+function getGroupDeliveryStatus(
+  orders: Order[],
+): DeliveryTrackingStatus | null {
   if (orders.some((o) => o.deliveryStatus === "delivered")) return "delivered";
-  if (orders.some((o) => o.deliveryStatus === "delivering")) return "delivering";
+  if (orders.some((o) => o.deliveryStatus === "delivering"))
+    return "delivering";
   return null;
 }
 
 /** 그룹 내 가장 최근 집화일시 */
 function getGroupPickupDate(orders: Order[]): string | null {
-  const dates = orders
-    .map((o) => o.pickupDate)
-    .filter((d): d is string => !!d);
+  const dates = orders.map((o) => o.pickupDate).filter((d): d is string => !!d);
   if (dates.length === 0) return null;
   return dates.sort().reverse()[0];
 }
@@ -257,6 +281,7 @@ function GroupRows({
   onGroupCheck,
   onGroupDeliveryTypeChange,
   onGroupStatusChange,
+  onGroupDelete,
   onViewLogs,
 }: GroupRowsProps) {
   const groupStatus = getGroupStatus(group.orders);
@@ -265,6 +290,12 @@ function GroupRows({
   const groupDeliveryStatus = getGroupDeliveryStatus(group.orders);
   const groupPickupDate = getGroupPickupDate(group.orders);
   const isEditable = SELECTABLE_STATUSES.has(groupStatus); // pending or failed
+  // 예약 진행 중(booking)에는 Playwright가 그 row를 쓰고 있고,
+  // 발송완료(dispatched)는 이미 배송이 시작돼 되돌릴 수 없다 → 삭제 불가
+  const canDelete =
+    !!onGroupDelete &&
+    groupStatus !== "booking" &&
+    groupStatus !== "dispatched";
 
   return (
     <>
@@ -295,7 +326,9 @@ function GroupRows({
         </TableCell>
         <TableCell>
           <div className="space-y-0.5 min-w-0">
-            <p className="text-sm font-medium truncate">{group.recipientName}</p>
+            <p className="text-sm font-medium truncate">
+              {group.recipientName}
+            </p>
             <p className="text-xs text-muted-foreground truncate">
               {group.recipientPhone}
             </p>
@@ -323,7 +356,10 @@ function GroupRows({
               }
             >
               <SelectTrigger className="w-28 h-7 text-xs">
-                <span data-slot="select-value" className="flex flex-1 text-left">
+                <span
+                  data-slot="select-value"
+                  className="flex flex-1 text-left"
+                >
                   {DELIVERY_TYPE_LABELS[groupDeliveryType]}
                 </span>
               </SelectTrigger>
@@ -336,7 +372,9 @@ function GroupRows({
                   disabled={!group.isNextDayEligible}
                   className="text-xs"
                 >
-                  {group.isNextDayEligible ? "내일배송" : "내일배송 (불가 지역)"}
+                  {group.isNextDayEligible
+                    ? "내일배송"
+                    : "내일배송 (불가 지역)"}
                 </SelectItem>
               </SelectContent>
             </Select>
@@ -367,80 +405,106 @@ function GroupRows({
         </TableCell>
         <TableCell onClick={(e) => e.stopPropagation()}>
           <div className="flex items-center gap-1">
-          {NON_EDITABLE_BADGE_STATUSES.has(groupStatus) ? (
-            <div className="flex flex-col gap-0.5">
-              <StatusBadge status={groupStatus as OrderStatus} />
-              {groupStatus === "dispatched" && groupDeliveryStatus === "delivering" && (
-                <Badge className="bg-blue-100 text-blue-700 hover:bg-blue-100 dark:bg-blue-900 dark:text-blue-300 text-[10px] px-1.5 py-0 w-fit">
-                  배송중
-                </Badge>
-              )}
-              {groupStatus === "dispatched" && groupPickupDate && (
-                <span className="text-[10px] text-muted-foreground">
-                  집화 {formatPickupDate(groupPickupDate)}
+            {NON_EDITABLE_BADGE_STATUSES.has(groupStatus) ? (
+              <div className="flex flex-col gap-0.5">
+                <StatusBadge status={groupStatus as OrderStatus} />
+                {groupStatus === "dispatched" &&
+                  groupDeliveryStatus === "delivering" && (
+                    <Badge className="bg-blue-100 text-blue-700 hover:bg-blue-100 dark:bg-blue-900 dark:text-blue-300 text-[10px] px-1.5 py-0 w-fit">
+                      배송중
+                    </Badge>
+                  )}
+                {groupStatus === "dispatched" && groupPickupDate && (
+                  <span className="text-[10px] text-muted-foreground">
+                    집화 {formatPickupDate(groupPickupDate)}
+                  </span>
+                )}
+              </div>
+            ) : !selectable && groupStatus === "booked" ? (
+              /* 서버 모드 booked: 운송장 상태 + 수동 발송완료 */
+              <div className="flex flex-col gap-0.5">
+                <span className="text-xs text-muted-foreground">
+                  운송장 대기중
                 </span>
-              )}
-            </div>
-          ) : !selectable && groupStatus === "booked" ? (
-            /* 서버 모드 booked: 운송장 상태 + 수동 발송완료 */
-            <div className="flex flex-col gap-0.5">
-              <span className="text-xs text-muted-foreground">운송장 대기중</span>
+                <Select
+                  value={groupStatus}
+                  onValueChange={(v) =>
+                    onGroupStatusChange(group.orderId, v as OrderStatus)
+                  }
+                >
+                  <SelectTrigger className="w-24 h-6 text-[11px]">
+                    <span
+                      data-slot="select-value"
+                      className="flex flex-1 text-left"
+                    >
+                      상태 변경
+                    </span>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="dispatched" className="text-xs">
+                      발송완료
+                    </SelectItem>
+                    <SelectItem value="booked" className="text-xs">
+                      예약완료
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            ) : (
               <Select
                 value={groupStatus}
                 onValueChange={(v) =>
                   onGroupStatusChange(group.orderId, v as OrderStatus)
                 }
               >
-                <SelectTrigger className="w-24 h-6 text-[11px]">
-                  <span data-slot="select-value" className="flex flex-1 text-left">
-                    상태 변경
+                <SelectTrigger className="w-20 h-7 text-xs">
+                  <span
+                    data-slot="select-value"
+                    className="flex flex-1 text-left"
+                  >
+                    {groupStatus === "pending"
+                      ? "대기"
+                      : groupStatus === "booked"
+                        ? "완료"
+                        : "실패"}
                   </span>
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="dispatched" className="text-xs">
-                    발송완료
+                  <SelectItem value="pending" className="text-xs">
+                    대기
                   </SelectItem>
                   <SelectItem value="booked" className="text-xs">
-                    예약완료
+                    완료
+                  </SelectItem>
+                  <SelectItem value="failed" className="text-xs">
+                    실패
                   </SelectItem>
                 </SelectContent>
               </Select>
-            </div>
-          ) : (
-            <Select
-              value={groupStatus}
-              onValueChange={(v) =>
-                onGroupStatusChange(group.orderId, v as OrderStatus)
-              }
+            )}
+            <button
+              title="예약 로그 보기"
+              className="p-1 text-muted-foreground hover:text-foreground rounded"
+              onClick={(e) => {
+                e.stopPropagation();
+                onViewLogs(group.orders[0].id, group.orderId);
+              }}
             >
-              <SelectTrigger className="w-20 h-7 text-xs">
-                <span data-slot="select-value" className="flex flex-1 text-left">
-                  {groupStatus === "pending" ? "대기" : groupStatus === "booked" ? "완료" : "실패"}
-                </span>
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="pending" className="text-xs">
-                  대기
-                </SelectItem>
-                <SelectItem value="booked" className="text-xs">
-                  완료
-                </SelectItem>
-                <SelectItem value="failed" className="text-xs">
-                  실패
-                </SelectItem>
-              </SelectContent>
-            </Select>
-          )}
-          <button
-            title="예약 로그 보기"
-            className="p-1 text-muted-foreground hover:text-foreground rounded"
-            onClick={(e) => {
-              e.stopPropagation();
-              onViewLogs(group.orders[0].id, group.orderId);
-            }}
-          >
-            <ScrollText className="h-3.5 w-3.5" />
-          </button>
+              <ScrollText className="h-3.5 w-3.5" />
+            </button>
+            {canDelete && (
+              <button
+                title="주문 삭제 (목록에서만 제거)"
+                aria-label={`${group.recipientName} 주문 삭제`}
+                className="p-1 text-muted-foreground hover:text-destructive rounded"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onGroupDelete!(group);
+                }}
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+            )}
           </div>
         </TableCell>
       </TableRow>
@@ -448,29 +512,26 @@ function GroupRows({
       {/* 펼친 상태 — 상품 리스트 */}
       {isExpanded &&
         group.orders.map((order) => (
-            <TableRow
-              key={order.id}
-              className="border-0 bg-muted/10"
-            >
-              {selectable && <TableCell />}
-              <TableCell />
-              <TableCell colSpan={3}>
-                <div className="space-y-0.5 pl-2">
-                  <p className="text-sm leading-snug">{order.productName}</p>
-                  {order.optionInfo && (
-                    <p className="text-xs text-muted-foreground">
-                      옵션: {order.optionInfo}
-                    </p>
-                  )}
-                </div>
-              </TableCell>
-              <TableCell />
-              <TableCell className="text-right text-sm">
-                {order.quantity} × {formatPrice(order.totalPrice)}
-              </TableCell>
-              <TableCell />
-            </TableRow>
-          ))}
+          <TableRow key={order.id} className="border-0 bg-muted/10">
+            {selectable && <TableCell />}
+            <TableCell />
+            <TableCell colSpan={3}>
+              <div className="space-y-0.5 pl-2">
+                <p className="text-sm leading-snug">{order.productName}</p>
+                {order.optionInfo && (
+                  <p className="text-xs text-muted-foreground">
+                    옵션: {order.optionInfo}
+                  </p>
+                )}
+              </div>
+            </TableCell>
+            <TableCell />
+            <TableCell className="text-right text-sm">
+              {order.quantity} × {formatPrice(order.totalPrice)}
+            </TableCell>
+            <TableCell />
+          </TableRow>
+        ))}
     </>
   );
 }

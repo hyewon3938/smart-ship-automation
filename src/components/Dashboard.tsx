@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { useEffect, useRef } from "react";
 
 import { BookingConfirmDialog } from "@/components/BookingConfirmDialog";
+import { DeleteOrderDialog } from "@/components/DeleteOrderDialog";
 import { DispatchPanel } from "@/components/DispatchPanel";
 import { VisitPickupConfirmDialog } from "@/components/VisitPickupConfirmDialog";
 import { OrderTable } from "@/components/OrderTable";
@@ -18,6 +19,7 @@ import {
   useBookOrders,
   useBookVisitPickup,
   useCancelBooking,
+  useDeleteOrderGroup,
   useOrders,
   useSyncOrders,
   useUpdateGroupDeliveryType,
@@ -28,11 +30,17 @@ import {
   countGroupsByServerFilter,
   countGroupsByStatus,
   filterOrdersByServerFilter,
+  getGroupStatus,
   groupOrdersByOrderId,
 } from "@/lib/groupOrders";
 import { requestJson } from "@/lib/api-client";
 
-import type { DeliveryType, OrderStatus, ServerFilter } from "@/types";
+import type {
+  DeliveryType,
+  OrderGroup,
+  OrderStatus,
+  ServerFilter,
+} from "@/types";
 
 const isServerMode = process.env.NEXT_PUBLIC_DEPLOY_MODE === "server";
 
@@ -47,6 +55,12 @@ export function Dashboard() {
   const [isBookingDialogOpen, setIsBookingDialogOpen] = useState(false);
   const [isVisitPickupDialogOpen, setIsVisitPickupDialogOpen] = useState(false);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<{
+    orderId: string;
+    recipientName: string;
+    itemCount: number;
+    status: OrderStatus;
+  } | null>(null);
 
   // 예약 진행 추적 (2단계):
   // 1단계(waiting): 예약 시작 → "booking" 상태가 나타날 때까지 대기
@@ -63,6 +77,7 @@ export function Dashboard() {
   const bookMutation = useBookOrders();
   const visitPickupMutation = useBookVisitPickup();
   const cancelBookingMutation = useCancelBooking();
+  const deleteGroupMutation = useDeleteOrderGroup();
 
   // GS택배 쿠키 유효성 확인 (만료 시 로그인 배너 표시)
   const cookieStatusQuery = useQuery({
@@ -131,8 +146,13 @@ export function Dashboard() {
   function handleSync() {
     syncMutation.mutate(undefined, {
       onSuccess: (result) => {
+        const reconciled =
+          (result.reconciledDispatched ?? 0) + (result.reconciledTracked ?? 0);
         toast.success(
-          `동기화 완료: ${result.created}건 추가, ${result.updated}건 갱신`,
+          `동기화 완료: ${result.created}건 추가, ${result.updated}건 갱신` +
+            (reconciled > 0
+              ? ` · 서버 상태 반영 ${result.reconciledDispatched ?? 0}건 발송완료`
+              : ""),
         );
       },
       onError: (error) => {
@@ -190,6 +210,34 @@ export function Dashboard() {
         },
       },
     );
+  }
+
+  function handleGroupDelete(group: OrderGroup) {
+    setDeleteTarget({
+      orderId: group.orderId,
+      recipientName: group.recipientName,
+      itemCount: group.orders.length,
+      status: getGroupStatus(group.orders) as OrderStatus,
+    });
+  }
+
+  function handleConfirmDelete() {
+    if (!deleteTarget) return;
+    const { recipientName } = deleteTarget;
+
+    deleteGroupMutation.mutate(deleteTarget.orderId, {
+      onSuccess: () => {
+        toast.success(`${recipientName} 주문을 삭제했습니다`);
+        setSelectedIds(new Set());
+        setDeleteTarget(null);
+      },
+      onError: (error) => {
+        // 서버가 이미 발송처리한 경우도 여기로 온다 (409) — 목록은 갱신해야 한다
+        toast.error(error.message);
+        void queryClient.invalidateQueries({ queryKey: ["orders"] });
+        setDeleteTarget(null);
+      },
+    });
   }
 
   function handleCancelBooking() {
@@ -334,7 +382,17 @@ export function Dashboard() {
           onSelectedChange={setSelectedIds}
           onGroupDeliveryTypeChange={handleGroupDeliveryTypeChange}
           onGroupStatusChange={handleGroupStatusChange}
+          onGroupDelete={isServerMode ? undefined : handleGroupDelete}
           selectable={!isServerMode}
+        />
+      )}
+
+      {!isServerMode && (
+        <DeleteOrderDialog
+          target={deleteTarget}
+          isPending={deleteGroupMutation.isPending}
+          onConfirm={handleConfirmDelete}
+          onCancel={() => setDeleteTarget(null)}
         />
       )}
 

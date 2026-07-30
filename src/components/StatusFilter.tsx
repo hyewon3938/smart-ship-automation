@@ -35,6 +35,9 @@ const LOCAL_TABS: {
 }[] = [
   { key: "pending", label: "대기", countKey: "pending" },
   { key: "booked", label: "예약완료", countKey: "booked" },
+  // 서버 역동기화로 로컬에도 dispatched가 생기므로 탭이 필요하다.
+  // 없으면 예약완료 탭에서 사라져 "발송된 건지 유실된 건지" 알 수 없다 (ADR-0005).
+  { key: "dispatched", label: "발송완료", countKey: "dispatched" },
   { key: "failed", label: "실패", countKey: "failed" },
   { key: undefined, label: "전체", countKey: "all" },
 ];

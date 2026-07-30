@@ -3,6 +3,14 @@ import { and, desc, eq, gte, inArray, isNotNull, ne, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { bookingLogs, orders } from "@/lib/db/schema";
 import { maskId } from "@/lib/log-mask";
+import {
+  aggregateGroupState,
+  findDeleteBlocker,
+  needsServerCheckBeforeDelete,
+  resolveServerStateSync,
+} from "@/lib/order-lifecycle";
+
+import type { OrderGroupState } from "@/lib/order-lifecycle";
 
 import type { VisitDispatchInfo } from "@/lib/gs-delivery/types";
 import type {
@@ -761,4 +769,185 @@ function makeVisitMatchKey(zipCode: string, phone: string): string | null {
   const last4 = digits.match(/(\d{4})$/);
   if (!last4) return null;
   return `${z}:${last4[1]}`;
+}
+
+// ─── 서버 → 로컬 상태 역동기화 (ADR-0005) ───
+
+/** 역동기화 조회 범위 — 이보다 오래된 주문은 이미 종결된 것으로 보고 제외 */
+function twoWeeksAgo(): string {
+  const d = new Date();
+  d.setDate(d.getDate() - 14);
+  return d.toISOString();
+}
+
+/**
+ * 서버 상태를 확인해야 하는 로컬 주문 그룹의 orderId 목록.
+ *
+ * 발송 주체는 서버뿐이므로, 로컬에서 아직 "진행 중"(booked/booking)이거나
+ * 사용자가 수동으로 실패 처리한(failed) 그룹은 서버가 이미 발송처리했을 수 있다.
+ */
+export function getReconcilableOrderIds(): string[] {
+  const rows = db
+    .select({ orderId: orders.orderId })
+    .from(orders)
+    .where(
+      and(
+        inArray(orders.status, [
+          "booked",
+          "booking",
+          "failed",
+        ] as OrderStatus[]),
+        gte(orders.createdAt, twoWeeksAgo()),
+      ),
+    )
+    .all();
+
+  return Array.from(new Set(rows.map((r) => r.orderId)));
+}
+
+/**
+ * orderId 목록의 그룹 상태 조회 (서버가 로컬 질의에 응답할 때 사용).
+ * 서버 DB에 없는 orderId는 결과에서 빠진다.
+ */
+export function getOrderGroupStates(
+  orderIds: string[],
+): Array<{ orderId: string } & OrderGroupState> {
+  if (orderIds.length === 0) return [];
+
+  const rows = db
+    .select({
+      orderId: orders.orderId,
+      status: orders.status,
+      dispatchStatus: orders.dispatchStatus,
+      trackingNumber: orders.trackingNumber,
+      dispatchedAt: orders.dispatchedAt,
+    })
+    .from(orders)
+    .where(inArray(orders.orderId, orderIds))
+    .all();
+
+  const byOrderId = new Map<string, typeof rows>();
+  for (const r of rows) {
+    const existing = byOrderId.get(r.orderId) ?? [];
+    existing.push(r);
+    byOrderId.set(r.orderId, existing);
+  }
+
+  const states: Array<{ orderId: string } & OrderGroupState> = [];
+  for (const [orderId, group] of byOrderId) {
+    const state = aggregateGroupState(group);
+    if (state) states.push({ orderId, ...state });
+  }
+  return states;
+}
+
+/**
+ * 서버에서 받은 그룹 상태를 로컬 DB에 반영.
+ *
+ * @returns 실제로 변경했으면 변경 사유, 변경할 게 없으면 null
+ */
+export function applyServerGroupState(
+  orderId: string,
+  server: OrderGroupState,
+): "dispatched" | "tracking" | null {
+  const rows = db
+    .select({
+      id: orders.id,
+      status: orders.status,
+      dispatchStatus: orders.dispatchStatus,
+      trackingNumber: orders.trackingNumber,
+      dispatchedAt: orders.dispatchedAt,
+    })
+    .from(orders)
+    .where(eq(orders.orderId, orderId))
+    .all();
+
+  const local = aggregateGroupState(rows);
+  if (!local) return null;
+
+  const patch = resolveServerStateSync(local, server);
+  if (!patch) return null;
+
+  const now = new Date().toISOString();
+  db.update(orders)
+    .set({
+      ...(patch.status ? { status: patch.status } : {}),
+      ...(patch.dispatchStatus ? { dispatchStatus: patch.dispatchStatus } : {}),
+      ...(patch.trackingNumber ? { trackingNumber: patch.trackingNumber } : {}),
+      ...(patch.reason === "dispatched"
+        ? { dispatchedAt: patch.dispatchedAt ?? now }
+        : {}),
+      updatedAt: now,
+    })
+    .where(eq(orders.orderId, orderId))
+    .run();
+
+  // action은 로그 다이얼로그가 아는 값만 사용 (모르는 값은 배지에 원문 노출)
+  addBookingLog(
+    rows[0].id,
+    patch.reason === "dispatched" ? "complete" : "info",
+    patch.reason === "dispatched"
+      ? `서버 발송처리 확인 — 로컬 상태 동기화${patch.trackingNumber ? ` (운송장: ${patch.trackingNumber})` : ""}`
+      : `서버에서 운송장 확인 — 로컬 동기화: ${patch.trackingNumber}`,
+  );
+
+  return patch.reason;
+}
+
+// ─── 주문 그룹 삭제 ───
+
+/** 그룹 내 상태 목록 (삭제 가능 여부 판정용) */
+export function getGroupStatuses(orderId: string): string[] {
+  return db
+    .select({ status: orders.status })
+    .from(orders)
+    .where(eq(orders.orderId, orderId))
+    .all()
+    .map((r) => r.status);
+}
+
+/** 삭제 전에 서버 상태를 먼저 확인해야 하는 그룹인지 */
+export function shouldCheckServerBeforeDelete(orderId: string): boolean {
+  return needsServerCheckBeforeDelete(getGroupStatuses(orderId));
+}
+
+/**
+ * 주문 그룹을 DB에서 완전 삭제 (예약 로그 포함).
+ *
+ * tombstone을 남기지 않는 hard delete — 네이버에 아직 발송대기로 남아 있는
+ * 주문은 다음 동기화에서 다시 수집된다 (ADR-0005).
+ *
+ * @throws 삭제 불가 상태(booking/dispatched)이거나 주문이 없으면 에러
+ */
+export function deleteOrderGroup(orderId: string): {
+  deleted: number;
+  recipientName: string | null;
+} {
+  const rows = db
+    .select({
+      id: orders.id,
+      status: orders.status,
+      recipientName: orders.recipientName,
+    })
+    .from(orders)
+    .where(eq(orders.orderId, orderId))
+    .all();
+
+  const blocker = findDeleteBlocker(rows.map((r) => r.status));
+  if (blocker) throw new Error(blocker);
+
+  const ids = rows.map((r) => r.id);
+
+  // 예약 로그 먼저 정리 (orders.id 참조 — 고아 레코드 방지)
+  db.delete(bookingLogs).where(inArray(bookingLogs.orderId, ids)).run();
+  const result = db.delete(orders).where(eq(orders.orderId, orderId)).run();
+
+  console.log(
+    `[orders] 주문 삭제 — ${maskId(orderId)} (${result.changes ?? 0}건)`,
+  );
+
+  return {
+    deleted: result.changes ?? 0,
+    recipientName: rows[0]?.recipientName ?? null,
+  };
 }
