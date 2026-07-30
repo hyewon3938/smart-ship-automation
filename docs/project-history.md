@@ -394,3 +394,48 @@
   게이트, `DispatchPanel` 로컬 재연결
 - 단위 테스트 4건 추가 (checkAndDispatch 시간 게이트, fake timer 기반)
 - ADR-0004 영구 결정 기록
+
+## 2026-07-30 — 서버 → 로컬 상태 역동기화 + 주문 삭제 기능
+
+### 배경
+- 서버가 이미 네이버 발송처리를 끝낸 주문이 로컬 화면에는 계속 "운송장 대기 중"으로 남았다.
+  발송(운송장 스크래핑 + 네이버 발송처리)은 서버 단독 책임인데, 그 결과가 로컬로 돌아오는
+  경로가 사실상 없었기 때문
+- 유일한 역동기화 트리거(`resyncBookedOrders()`)가 **예약 큐 드레인 직후** = 서버가 운송장을
+  잡기 몇 분 전에 호출돼 방금 예약한 배치는 항상 어긋났고, 이후 재호출도 없었다
+- 동기화 버튼은 네이버 *발송대기* 주문만 가져오므로 이미 발송된 건은 응답에서 빠져 복구 불가
+- 사용자가 수동으로 실패 처리해 치워둔 그룹은 `getLocalBookedOrders()`(booked만 조회) 대상
+  밖이라 영구 고착
+- 또한 동기화로 올라온 주문을 취소하고 싶어도 목록에서 지울 방법이 없었다
+
+### 역동기화 (pull)
+- 서버에 읽기 전용 조회 엔드포인트 신설: `POST /api/internal/order-state`
+- 로컬 `reconcileFromServer()`가 미완결 그룹(booked/booking/failed, 최근 2주)을 서버에 물어
+  로컬 DB를 정정 — 발송 관련 필드는 항상 서버가 진실
+- 호출 지점 3곳: 동기화 버튼(네이버 조회 전), `manual-now` step 0(불필요한 GS 접근 차단),
+  예약 큐 드레인 직후(지난 배치 회수)
+- 상태 판정을 순수 모듈 `lib/order-lifecycle.ts`로 분리 — `lib/orders.ts`는 import 시 실제
+  SQLite를 열기 때문에 정책만 떼어내 DB 없이 테스트
+- 로컬 대시보드에 **발송완료 탭** 추가 — 역동기화로 생긴 dispatched가 조용히 사라지지 않게
+
+### 주문 삭제
+- `DELETE /api/orders/group` — 대기·예약완료·실패·건너뜀 삭제 가능. tombstone 없는 hard
+  delete라 네이버에 남아 있는 주문은 다음 동기화에서 다시 수집됨
+- 삭제를 서버까지 전파(`DELETE /api/internal/orders`) — 로컬에서만 지우면 서버 폴링이 계속
+  추적해 발송해버린다
+- 예약완료·실패는 삭제 직전 그 그룹만 역동기화 → 서버가 이미 발송했으면 거부(409) 후
+  발송완료로 정정
+- `booking`(워커가 잡고 있음)·`dispatched`(복구 불가)는 삭제 제외
+- 확인 다이얼로그에 "GS택배 예약·네이버 주문은 취소되지 않음" 명시
+
+### 기술적 결정 (ADR-0005)
+- **pull 방식 채택**: 로컬 Mac은 공개 주소가 없어 서버 → 로컬 push(웹훅)가 불가.
+  사용자 행동(동기화/발송 버튼)에 역동기화를 얹는 방식이 로컬 폴링보다 싸고 확실
+- **그룹 전체 dispatched만 인정**: 부분 발송을 완료로 오인하지 않도록
+- **hard delete**: soft delete면 네이버 재수집이 tombstone에 막힘
+
+### 산출물
+- 신규: `lib/order-lifecycle.ts`(순수 정책), `api/internal/order-state`(서버 조회),
+  `api/internal/orders`(삭제 전파), `components/DeleteOrderDialog.tsx`
+- 단위 테스트 19건 (`order-lifecycle.test.ts`) + 실 DB 복사본 대상 통합 검증(일회성)
+- ADR-0005 영구 결정 기록
