@@ -25,3 +25,4 @@ CLAUDE.md "설계 판단 기록 — ADR" 섹션 참조. 다음 중 2개 이상�
 | [0001](./0001-visit-pickup-dispatch.md) | 방문택배 자동 발송처리 — 폴링 트리거 + 마스킹 매칭 | Accepted | #59 |
 | [0003](./0003-manual-out-of-window-dispatch.md) | 윈도우 밖 수동 즉시 발송 — 로컬 트리거 + 서버 단독 발송 + 세션 live 프로브 | Accepted | #66 |
 | [0004](./0004-recent-booking-scrape-window.md) | 예약 후 1시간 하이브리드 스크래핑 — 절대 시각 윈도우 + 예약 상대 창 | Accepted | — |
+| [0005](./0005-server-to-local-reconcile-and-order-delete.md) | 서버 → 로컬 상태 역동기화(pull) + 주문 그룹 hard delete | Accepted | #70 |

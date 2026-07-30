@@ -7,18 +7,11 @@ export type Order = InferSelectModel<typeof orders>;
 
 /** 주문 상태 */
 export type OrderStatus =
-  | "pending"
-  | "booking"
-  | "booked"
-  | "failed"
-  | "skipped"
-  | "dispatched";
+  "pending" | "booking" | "booked" | "failed" | "skipped" | "dispatched";
 
 /** 발송처리 상태 */
 export type DispatchStatus =
-  | "pending_dispatch"
-  | "dispatched"
-  | "dispatch_failed";
+  "pending_dispatch" | "dispatched" | "dispatch_failed";
 
 /** 서버 대시보드 필터 (발송 흐름 기준) */
 export type ServerFilter = "waiting" | "dispatched" | "dispatch_failed";
@@ -49,6 +42,10 @@ export interface SyncResult {
   created: number;
   updated: number;
   skipped: number;
+  /** 서버 역동기화로 발송완료 처리된 그룹 수 (로컬 모드 동기화 시) */
+  reconciledDispatched?: number;
+  /** 서버 역동기화로 운송장이 채워진 그룹 수 */
+  reconciledTracked?: number;
 }
 
 /** 주문 목록 API 응답 */

@@ -13,7 +13,11 @@ import {
   recoverStuckBookings,
   updateOrderStatusBatch,
 } from "@/lib/orders";
-import { resyncBookedOrders, syncBookingResult } from "@/lib/sync-to-server";
+import {
+  reconcileFromServer,
+  resyncBookedOrders,
+  syncBookingResult,
+} from "@/lib/sync-to-server";
 
 import type { BookingTask, VisitPickupTask } from "./types";
 
@@ -90,8 +94,11 @@ async function processNext(): Promise<void> {
       drainQueue();
       cancelRequested = false;
     } else if (queue.length === 0) {
-      // 큐 처리 완료 — 동기화 누락된 booked 주문 재전송
-      void resyncBookedOrders();
+      // 큐 처리 완료 — 동기화 누락된 booked 주문 재전송 후,
+      // 지난 배치(수시간~수일 전 예약)가 서버에서 이미 발송됐는지 역동기화.
+      // 방금 예약한 건은 서버가 아직 운송장을 못 잡았을 시점이라 여기서 안 잡힌다
+      // → 그건 동기화 버튼 / 지금 발송처리 경로가 담당한다 (ADR-0005).
+      void resyncBookedOrders().then(() => reconcileFromServer());
       scheduleIdleShutdown();
     } else {
       processNext();

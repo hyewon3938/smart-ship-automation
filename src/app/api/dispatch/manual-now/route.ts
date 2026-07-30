@@ -8,12 +8,13 @@ import {
   markOrderGroupAsDispatched,
   updateTrackingNumbers,
 } from "@/lib/orders";
-import { syncDispatchNow } from "@/lib/sync-to-server";
+import { reconcileFromServer, syncDispatchNow } from "@/lib/sync-to-server";
 
 /**
  * POST /api/dispatch/manual-now — 로컬 전용 "지금 발송처리" 오케스트레이터.
  *
  * 스크래핑 윈도우(8~18시) 밖이나 GS 세션 만료 상황에서 버튼 하나로:
+ *   0) 서버 상태 역동기화 (이미 발송된 건 제외 → 불필요한 GS 접근 차단)
  *   1) 세션 실측 확인 (만료 시 needLogin 반환 → 프론트가 로그인 트리거)
  *   2) booked 주문 운송장 스크래핑 (윈도우 게이트 우회)
  *   3) 서버로 넘겨 즉시 발송 (서버가 단독 발송 주체)
@@ -30,17 +31,11 @@ export async function POST() {
   }
 
   try {
-    // 1. GS 세션 실측 (파일 나이가 아닌 live 프로브)
-    const alive = await probeGsSession();
-    if (!alive) {
-      return NextResponse.json({
-        ok: false,
-        needLogin: true,
-        message: "GS택배 세션이 만료되었습니다. 로그인이 필요합니다.",
-      });
-    }
+    // 0. 서버 상태 역동기화 — 서버가 이미 발송처리한 건을 먼저 걷어낸다.
+    //    스크래핑·세션 프로브는 GS 봇 감지 리스크가 있으므로 불필요한 호출을 줄인다 (ADR-0005).
+    const reconciled = await reconcileFromServer();
 
-    // 2. booked + 예약번호 있고 운송장 아직 없는 그룹만 대상
+    // 1. booked + 예약번호 있고 운송장 아직 없는 그룹만 대상
     const groups = getBookedOrderGroups().filter(
       (g) => g.bookingReservationNo && !g.trackingNumber,
     );
@@ -48,9 +43,22 @@ export async function POST() {
       return NextResponse.json({
         ok: true,
         scraped: 0,
-        dispatched: 0,
+        dispatched: reconciled.dispatched,
         pending: 0,
-        message: "발송 대기 중인 주문이 없습니다",
+        message:
+          reconciled.dispatched > 0
+            ? `서버에서 이미 발송처리된 ${reconciled.dispatched}건을 반영했습니다`
+            : "발송 대기 중인 주문이 없습니다",
+      });
+    }
+
+    // 2. GS 세션 실측 (파일 나이가 아닌 live 프로브)
+    const alive = await probeGsSession();
+    if (!alive) {
+      return NextResponse.json({
+        ok: false,
+        needLogin: true,
+        message: "GS택배 세션이 만료되었습니다. 로그인이 필요합니다.",
       });
     }
 

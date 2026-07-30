@@ -78,6 +78,31 @@ export function useUpdateGroupDeliveryType() {
   });
 }
 
+/**
+ * 주문 그룹 삭제 (앱 목록에서만 제거 — GS 예약·네이버 주문은 취소되지 않음).
+ * 대기 상태 삭제 건은 네이버에 남아 있으면 다음 동기화에서 다시 수집된다.
+ */
+export function useDeleteOrderGroup() {
+  const queryClient = useQueryClient();
+  return useMutation<
+    { success: boolean; deleted: number; recipientName: string | null },
+    Error,
+    string
+  >({
+    mutationFn: (orderId) =>
+      requestJson<{
+        success: boolean;
+        deleted: number;
+        recipientName: string | null;
+      }>(`/api/orders/group?orderId=${encodeURIComponent(orderId)}`, {
+        method: "DELETE",
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["orders"] });
+    },
+  });
+}
+
 /** 주문의 예약 로그 조회 */
 export function useBookingLogs(orderId: number | null) {
   return useQuery<{ logs: BookingLogEntry[] }>({
