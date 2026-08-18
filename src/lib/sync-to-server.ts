@@ -19,6 +19,9 @@ function canSync(): boolean {
 const MAX_RETRIES = 2;
 const RETRY_DELAYS = [2000, 5000]; // ms
 
+/** `/api/internal/order-state`가 한 번에 받는 orderIds 상한 */
+const ORDER_STATE_CHUNK = 300;
+
 async function postToServer(
   endpoint: string,
   data: unknown,
@@ -211,32 +214,38 @@ export async function reconcileFromServer(orderIds?: string[]): Promise<{
   const targets = orderIds ?? getReconcilableOrderIds();
   if (targets.length === 0) return { ok: true, ...empty };
 
-  const res = await postToServer("/api/internal/order-state", {
-    orderIds: targets,
-  });
-  if (!res.ok || !Array.isArray(res.body?.states)) {
-    return { ok: false, checked: targets.length, dispatched: 0, tracked: 0 };
-  }
-
-  const states = res.body.states as Array<{
-    orderId: string;
-    status: string;
-    dispatchStatus: string | null;
-    trackingNumber: string | null;
-    dispatchedAt: string | null;
-  }>;
-
   let dispatched = 0;
   let tracked = 0;
-  for (const state of states) {
-    const reason = applyServerGroupState(state.orderId, {
-      status: state.status as OrderStatus,
-      dispatchStatus: state.dispatchStatus as DispatchStatus | null,
-      trackingNumber: state.trackingNumber,
-      dispatchedAt: state.dispatchedAt,
+
+  // 조회 대상에 기간 제한이 없으므로 서버 상한(orderIds 300건)에 맞춰 나눠 보낸다.
+  for (let i = 0; i < targets.length; i += ORDER_STATE_CHUNK) {
+    const chunk = targets.slice(i, i + ORDER_STATE_CHUNK);
+    const res = await postToServer("/api/internal/order-state", {
+      orderIds: chunk,
     });
-    if (reason === "dispatched") dispatched++;
-    else if (reason === "tracking") tracked++;
+    if (!res.ok || !Array.isArray(res.body?.states)) {
+      // 앞선 청크에서 이미 반영한 건은 유효하므로 카운트를 그대로 돌려준다.
+      return { ok: false, checked: targets.length, dispatched, tracked };
+    }
+
+    const states = res.body.states as Array<{
+      orderId: string;
+      status: string;
+      dispatchStatus: string | null;
+      trackingNumber: string | null;
+      dispatchedAt: string | null;
+    }>;
+
+    for (const state of states) {
+      const reason = applyServerGroupState(state.orderId, {
+        status: state.status as OrderStatus,
+        dispatchStatus: state.dispatchStatus as DispatchStatus | null,
+        trackingNumber: state.trackingNumber,
+        dispatchedAt: state.dispatchedAt,
+      });
+      if (reason === "dispatched") dispatched++;
+      else if (reason === "tracking") tracked++;
+    }
   }
 
   if (dispatched > 0 || tracked > 0) {

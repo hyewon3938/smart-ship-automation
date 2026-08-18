@@ -3,6 +3,7 @@ import {
   conditionalOrdersResponseSchema,
   toProductOrderDetail,
 } from "./types";
+import type { NaverItemState } from "@/lib/order-lifecycle";
 import type { ProductOrderDetail } from "./types";
 
 const BASE_URL = "https://api.commerce.naver.com/external/v1";
@@ -16,7 +17,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
  */
 async function fetchWithRetry(
   url: string,
-  options: RequestInit
+  options: RequestInit,
 ): Promise<Response> {
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
     const response = await fetch(url, options);
@@ -148,6 +149,69 @@ export interface DeliveryInfo {
   pickupDate: string | null;
 }
 
+/** `/product-orders/query`가 한 번에 받는 productOrderId 상한 */
+const QUERY_CHUNK = 300;
+
+/**
+ * 상품주문 ID 목록의 "발송 관점 상태" 조회.
+ *
+ * `fetchDeliveryStatuses`가 배송 추적용으로 DELIVERING/DELIVERED만 뽑는 것과 달리,
+ * 여기서는 발송 여부 판정에 필요한 원문 상태(productOrderStatus)와 운송장·발송일을
+ * 그대로 돌려준다. 판정 자체는 `resolveNaverGroupDispatch`가 한다.
+ */
+export async function fetchProductOrderStates(
+  productOrderIds: string[],
+): Promise<Map<string, NaverItemState>> {
+  const result = new Map<string, NaverItemState>();
+  if (productOrderIds.length === 0) return result;
+
+  const token = await getAccessToken();
+
+  for (let i = 0; i < productOrderIds.length; i += QUERY_CHUNK) {
+    const chunk = productOrderIds.slice(i, i + QUERY_CHUNK);
+    const response = await fetchWithRetry(
+      `${BASE_URL}/pay-order/seller/product-orders/query`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ productOrderIds: chunk }),
+      },
+    );
+
+    const body = await response.text();
+    if (!response.ok) {
+      throw new Error(
+        `주문 상세 조회 실패 (${response.status}): ${body.slice(0, 500)}`,
+      );
+    }
+
+    const items = JSON.parse(body).data;
+    if (!Array.isArray(items)) continue;
+
+    for (const item of items) {
+      const productOrderId = item.productOrder?.productOrderId;
+      if (!productOrderId) continue;
+      const delivery = item.delivery ?? {};
+
+      result.set(productOrderId, {
+        productOrderStatus: item.productOrder?.productOrderStatus ?? "",
+        trackingNumber: delivery.trackingNumber ?? null,
+        // sendDate(발송일)가 정확한 값. 없으면 집화/배송완료 시각으로 대체한다.
+        dispatchedAt:
+          delivery.sendDate ??
+          delivery.pickupDate ??
+          delivery.deliveredDate ??
+          null,
+      });
+    }
+  }
+
+  return result;
+}
+
 /**
  * 상품주문 ID 목록으로 배송 상태 조회 (POST /query)
  *
@@ -156,7 +220,7 @@ export interface DeliveryInfo {
  * 응답의 delivery 객체에서 deliveryStatus와 pickupDate를 추출.
  */
 export async function fetchDeliveryStatuses(
-  productOrderIds: string[]
+  productOrderIds: string[],
 ): Promise<Map<string, DeliveryInfo>> {
   if (productOrderIds.length === 0) return new Map();
 
@@ -172,14 +236,14 @@ export async function fetchDeliveryStatuses(
         "Content-Type": "application/json",
       },
       body: JSON.stringify({ productOrderIds }),
-    }
+    },
   );
 
   const body = await response.text();
 
   if (!response.ok) {
     throw new Error(
-      `주문 상세 조회 실패 (${response.status}): ${body.slice(0, 500)}`
+      `주문 상세 조회 실패 (${response.status}): ${body.slice(0, 500)}`,
     );
   }
 

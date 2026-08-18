@@ -106,6 +106,68 @@ export function aggregateGroupState(
   };
 }
 
+// ─── 네이버 원천 대조 정책 ───
+
+/** 네이버 상품주문 1건의 발송 관점 상태 */
+export interface NaverItemState {
+  /** 네이버 productOrderStatus 원문 */
+  productOrderStatus: string;
+  trackingNumber: string | null;
+  /** 네이버가 기록한 발송일 (ISO) */
+  dispatchedAt: string | null;
+}
+
+/** 발송처리가 끝난 뒤에만 도달하는 네이버 상품주문 상태 */
+const NAVER_DISPATCHED_STATUSES: ReadonlySet<string> = new Set([
+  "DELIVERING",
+  "DELIVERED",
+  "PURCHASE_DECIDED",
+  "EXCHANGED",
+]);
+
+/** 아직 발송 전 — 하나라도 있으면 그룹을 완료로 볼 수 없다 */
+const NAVER_PRE_DISPATCH_STATUSES: ReadonlySet<string> = new Set([
+  "PAYMENT_WAITING",
+  "PAYED",
+]);
+
+/**
+ * 네이버(발송처리의 최종 원천)가 보는 그룹 상태를 로컬 반영용으로 압축.
+ *
+ * 서버 DB가 모르는 그룹 — 서버 도입 이전 주문이거나 서버 DB가 초기화된 경우 —
+ * 은 역동기화로 영영 정리되지 않는다. 그런 그룹의 진위는 네이버만 알고 있다.
+ *
+ * 판정은 보수적으로 한다. 발송 이후 상태가 하나라도 있고 **발송 전 상태가 전혀
+ * 없을 때만** 완료로 본다. 취소·반품만 남은 그룹은 발송된 적이 없으므로 null.
+ *
+ * @returns 완료로 확정할 수 있으면 그룹 상태, 아니면 null (판단 보류 = 현상 유지)
+ */
+export function resolveNaverGroupDispatch(
+  items: NaverItemState[],
+): OrderGroupState | null {
+  if (items.length === 0) return null;
+  if (items.some((i) => NAVER_PRE_DISPATCH_STATUSES.has(i.productOrderStatus)))
+    return null;
+
+  const dispatched = items.filter((i) =>
+    NAVER_DISPATCHED_STATUSES.has(i.productOrderStatus),
+  );
+  if (dispatched.length === 0) return null;
+
+  const dispatchedAts = dispatched
+    .map((i) => i.dispatchedAt)
+    .filter((d): d is string => !!d)
+    .sort();
+
+  return {
+    status: "dispatched",
+    dispatchStatus: "dispatched",
+    trackingNumber:
+      dispatched.find((i) => i.trackingNumber)?.trackingNumber ?? null,
+    dispatchedAt: dispatchedAts[0] ?? null,
+  };
+}
+
 /**
  * 서버(발송 주체)의 그룹 상태를 로컬에 반영할 변경분을 계산.
  * 변경할 게 없으면 null.

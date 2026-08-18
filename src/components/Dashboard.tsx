@@ -8,6 +8,7 @@ import { useEffect, useRef } from "react";
 import { BookingConfirmDialog } from "@/components/BookingConfirmDialog";
 import { DeleteOrderDialog } from "@/components/DeleteOrderDialog";
 import { DispatchPanel } from "@/components/DispatchPanel";
+import { ManualDispatchButton } from "@/components/ManualDispatchButton";
 import { VisitPickupConfirmDialog } from "@/components/VisitPickupConfirmDialog";
 import { OrderTable } from "@/components/OrderTable";
 import { OrderTableSkeleton } from "@/components/OrderTableSkeleton";
@@ -21,6 +22,7 @@ import {
   useCancelBooking,
   useDeleteOrderGroup,
   useOrders,
+  useReconcileFromServer,
   useSyncOrders,
   useUpdateGroupDeliveryType,
   useUpdateGroupStatus,
@@ -101,6 +103,27 @@ export function Dashboard() {
   // 주문(orderId) 그룹 기준 상태별 카운트 — 화면에 보이는 숫자는 모두 주문 단위
   const statusCounts = countGroupsByStatus(allOrders);
   const serverStatusCounts = countGroupsByServerFilter(allOrders);
+
+  // 서버 → 로컬 역동기화 (로컬 전용, 2분 주기 + 탭 복귀 시).
+  // 발송은 서버 단독 책임이라, 이게 없으면 사용자가 동기화 버튼을 누르기 전까지
+  // 이미 발송된 주문이 계속 "예약완료"로 남는다 (ADR-0005).
+  const { data: reconcileData, dataUpdatedAt: reconcileUpdatedAt } =
+    useReconcileFromServer(!isServerMode);
+  const lastReconcileHandledAt = useRef(0);
+
+  useEffect(() => {
+    if (!reconcileData || reconcileUpdatedAt === lastReconcileHandledAt.current)
+      return;
+    lastReconcileHandledAt.current = reconcileUpdatedAt;
+
+    if (reconcileData.dispatched + reconcileData.tracked === 0) return;
+    void queryClient.invalidateQueries({ queryKey: ["orders"] });
+    if (reconcileData.dispatched > 0) {
+      toast.success(
+        `서버에서 발송처리된 ${reconcileData.dispatched}건을 반영했습니다`,
+      );
+    }
+  }, [reconcileData, reconcileUpdatedAt, queryClient]);
 
   // 서버 모드: 클라이언트 필터링 / 로컬 모드: API 필터링 결과 사용
   const orders = isServerMode
@@ -301,6 +324,9 @@ export function Dashboard() {
         </div>
         <div className="flex items-center gap-3">
           {!isServerMode && (
+            <ManualDispatchButton bookedGroupCount={statusCounts.booked} />
+          )}
+          {!isServerMode && (
             <button
               onClick={() => void handleGsLogin()}
               disabled={isLoggingIn}
@@ -448,7 +474,8 @@ export function Dashboard() {
         </div>
       )}
 
-      {/* 발송처리 현황 + 수동 즉시 발송 (로컬 모드만) — booked 주문 있을 때만 표시 */}
+      {/* 발송 실패 복구 (로컬 모드만) — dispatch_failed 그룹이 있을 때만 나타난다.
+          "지금 발송처리"는 헤더로, 운송장 대기 목록은 제거됐다. */}
       {!isServerMode && <DispatchPanel orders={allOrders} />}
 
       {/* 예약 확인 다이얼로그 (로컬 모드만) */}

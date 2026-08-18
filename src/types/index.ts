@@ -48,6 +48,18 @@ export interface SyncResult {
   reconciledTracked?: number;
 }
 
+/** 서버 → 로컬 상태 역동기화 결과 (`POST /api/orders/reconcile`) */
+export interface ReconcileResult {
+  /** 서버 조회 성공 여부. false면 로컬 DB는 그대로다 */
+  ok: boolean;
+  /** 서버에 상태를 물어본 주문 그룹 수 */
+  checked: number;
+  /** 발송완료로 정리된 그룹 수 */
+  dispatched: number;
+  /** 운송장만 채워진 그룹 수 */
+  tracked: number;
+}
+
 /** 주문 목록 API 응답 */
 export interface OrdersResponse {
   orders: Order[];

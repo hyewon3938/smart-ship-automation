@@ -4,9 +4,79 @@ import {
   aggregateGroupState,
   findDeleteBlocker,
   needsServerCheckBeforeDelete,
+  resolveNaverGroupDispatch,
   resolveServerStateSync,
   type OrderGroupState,
 } from "./order-lifecycle";
+
+/** 네이버 상품주문 1건 (테스트 편의용 팩토리) */
+function naverItem(
+  productOrderStatus: string,
+  trackingNumber: string | null = null,
+  dispatchedAt: string | null = null,
+) {
+  return { productOrderStatus, trackingNumber, dispatchedAt };
+}
+
+describe("resolveNaverGroupDispatch", () => {
+  it("배송중·배송완료·구매확정은 발송완료로 확정한다", () => {
+    for (const status of ["DELIVERING", "DELIVERED", "PURCHASE_DECIDED"]) {
+      expect(
+        resolveNaverGroupDispatch([
+          naverItem(status, "698248893295", "2026-05-29T17:06:55.000+09:00"),
+        ]),
+      ).toEqual({
+        status: "dispatched",
+        dispatchStatus: "dispatched",
+        trackingNumber: "698248893295",
+        dispatchedAt: "2026-05-29T17:06:55.000+09:00",
+      });
+    }
+  });
+
+  it("발송 전 항목이 하나라도 섞여 있으면 확정하지 않는다", () => {
+    expect(
+      resolveNaverGroupDispatch([
+        naverItem("DELIVERED", "698248893295"),
+        naverItem("PAYED"),
+      ]),
+    ).toBeNull();
+    expect(
+      resolveNaverGroupDispatch([
+        naverItem("DELIVERED"),
+        naverItem("PAYMENT_WAITING"),
+      ]),
+    ).toBeNull();
+  });
+
+  it("취소·반품만 남은 그룹은 발송된 적이 없으므로 확정하지 않는다", () => {
+    expect(
+      resolveNaverGroupDispatch([naverItem("CANCELED"), naverItem("RETURNED")]),
+    ).toBeNull();
+  });
+
+  it("네이버가 모르는 그룹(빈 목록)은 판단을 보류한다", () => {
+    expect(resolveNaverGroupDispatch([])).toBeNull();
+  });
+
+  it("발송일이 여러 개면 가장 이른 시각을 발송 시각으로 본다", () => {
+    const result = resolveNaverGroupDispatch([
+      naverItem("DELIVERED", null, "2026-05-30T09:00:00.000+09:00"),
+      naverItem("DELIVERED", "365105516570", "2026-05-29T12:32:45.000+09:00"),
+    ]);
+    expect(result?.dispatchedAt).toBe("2026-05-29T12:32:45.000+09:00");
+    expect(result?.trackingNumber).toBe("365105516570");
+  });
+
+  it("운송장·발송일이 없어도 상태만으로 확정할 수 있다", () => {
+    expect(resolveNaverGroupDispatch([naverItem("PURCHASE_DECIDED")])).toEqual({
+      status: "dispatched",
+      dispatchStatus: "dispatched",
+      trackingNumber: null,
+      dispatchedAt: null,
+    });
+  });
+});
 
 describe("findDeleteBlocker", () => {
   it("대기·예약완료·실패·건너뜀은 삭제 허용", () => {
