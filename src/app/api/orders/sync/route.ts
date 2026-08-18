@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { reconcileStaleFromNaver } from "@/lib/naver/reconcile";
 import { syncOrders } from "@/lib/naver/sync";
 import { setSetting } from "@/lib/settings";
 import { reconcileFromServer } from "@/lib/sync-to-server";
@@ -12,13 +13,25 @@ export async function POST() {
     //    서버 미설정/연결 실패여도 네이버 동기화는 계속 진행한다.
     const reconciled = await reconcileFromServer();
 
+    // 2. 서버가 모르는 묵은 그룹은 네이버에 직접 물어 정리.
+    //    실패해도 동기화 본작업은 계속한다 (정리는 부가 작업).
+    let naverReconciled = 0;
+    try {
+      naverReconciled = (await reconcileStaleFromNaver()).dispatched;
+    } catch (err) {
+      console.warn(
+        "[sync] 네이버 원천 대조 실패:",
+        err instanceof Error ? err.message : err,
+      );
+    }
+
     const result = await syncOrders();
     setSetting("lastSyncTime", new Date().toISOString());
 
     return NextResponse.json({
       message: "동기화 완료",
       ...result,
-      reconciledDispatched: reconciled.dispatched,
+      reconciledDispatched: reconciled.dispatched + naverReconciled,
       reconciledTracked: reconciled.tracked,
     });
   } catch (error) {

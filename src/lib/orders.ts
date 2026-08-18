@@ -1,4 +1,14 @@
-import { and, desc, eq, gte, inArray, isNotNull, ne, sql } from "drizzle-orm";
+import {
+  and,
+  desc,
+  eq,
+  gte,
+  inArray,
+  isNotNull,
+  isNull,
+  ne,
+  sql,
+} from "drizzle-orm";
 
 import { db } from "@/lib/db";
 import { bookingLogs, orders } from "@/lib/db/schema";
@@ -773,36 +783,61 @@ function makeVisitMatchKey(zipCode: string, phone: string): string | null {
 
 // ─── 서버 → 로컬 상태 역동기화 (ADR-0005) ───
 
-/** 역동기화 조회 범위 — 이보다 오래된 주문은 이미 종결된 것으로 보고 제외 */
-function twoWeeksAgo(): string {
-  const d = new Date();
-  d.setDate(d.getDate() - 14);
-  return d.toISOString();
-}
-
 /**
  * 서버 상태를 확인해야 하는 로컬 주문 그룹의 orderId 목록.
  *
  * 발송 주체는 서버뿐이므로, 로컬에서 아직 "진행 중"(booked/booking)이거나
  * 사용자가 수동으로 실패 처리한(failed) 그룹은 서버가 이미 발송처리했을 수 있다.
+ *
+ * 기간 제한을 두지 않는다. 예전에는 createdAt 2주 이내로 잘랐는데, 그 창을 벗어난
+ * 미완결 그룹은 어떤 경로로도 정리되지 않아 "영원히 예약완료"로 남았다.
+ * 호출부(`reconcileFromServer`)가 서버 상한(300건)에 맞춰 청크로 나눠 조회한다.
  */
 export function getReconcilableOrderIds(): string[] {
   const rows = db
     .select({ orderId: orders.orderId })
     .from(orders)
     .where(
-      and(
-        inArray(orders.status, [
-          "booked",
-          "booking",
-          "failed",
-        ] as OrderStatus[]),
-        gte(orders.createdAt, twoWeeksAgo()),
-      ),
+      inArray(orders.status, ["booked", "booking", "failed"] as OrderStatus[]),
     )
     .all();
 
   return Array.from(new Set(rows.map((r) => r.orderId)));
+}
+
+/**
+ * 네이버 원천 대조가 필요한 "묵은" 예약완료 항목.
+ *
+ * 정상 흐름이면 예약완료 그룹은 당일 안에 서버가 운송장을 잡아 발송처리하고,
+ * 그 결과가 역동기화로 돌아온다. 하루가 지나도 운송장조차 없는 그룹은 그 경로가
+ * 끊긴 것 — 서버 DB가 모르는 그룹(서버 도입 이전 주문 등)이 여기 해당한다.
+ *
+ * @param olderThanHours 예약(없으면 생성) 시각이 이보다 오래된 건만
+ */
+export function getStaleBookedProductOrders(
+  olderThanHours = 24,
+): Array<{ orderId: string; productOrderId: string }> {
+  const cutoff = new Date(
+    Date.now() - olderThanHours * 60 * 60 * 1000,
+  ).toISOString();
+
+  return db
+    .select({
+      orderId: orders.orderId,
+      productOrderId: orders.productOrderId,
+      bookedAt: orders.bookedAt,
+      createdAt: orders.createdAt,
+    })
+    .from(orders)
+    .where(
+      and(
+        eq(orders.status, "booked" as OrderStatus),
+        isNull(orders.trackingNumber),
+      ),
+    )
+    .all()
+    .filter((r) => (r.bookedAt ?? r.createdAt) < cutoff)
+    .map(({ orderId, productOrderId }) => ({ orderId, productOrderId }));
 }
 
 /**
@@ -842,13 +877,16 @@ export function getOrderGroupStates(
 }
 
 /**
- * 서버에서 받은 그룹 상태를 로컬 DB에 반영.
+ * 발송 주체(서버 또는 네이버)의 그룹 상태를 로컬 DB에 반영.
  *
+ * @param source 예약 로그에 남길 출처 표기 — 나중에 "왜 상태가 바뀌었나"를
+ *   추적할 때 서버 역동기화와 네이버 원천 대조를 구분할 수 있어야 한다
  * @returns 실제로 변경했으면 변경 사유, 변경할 게 없으면 null
  */
 export function applyServerGroupState(
   orderId: string,
   server: OrderGroupState,
+  source = "서버",
 ): "dispatched" | "tracking" | null {
   const rows = db
     .select({
@@ -887,8 +925,8 @@ export function applyServerGroupState(
     rows[0].id,
     patch.reason === "dispatched" ? "complete" : "info",
     patch.reason === "dispatched"
-      ? `서버 발송처리 확인 — 로컬 상태 동기화${patch.trackingNumber ? ` (운송장: ${patch.trackingNumber})` : ""}`
-      : `서버에서 운송장 확인 — 로컬 동기화: ${patch.trackingNumber}`,
+      ? `${source} 발송처리 확인 — 로컬 상태 동기화${patch.trackingNumber ? ` (운송장: ${patch.trackingNumber})` : ""}`
+      : `${source}에서 운송장 확인 — 로컬 동기화: ${patch.trackingNumber}`,
   );
 
   return patch.reason;

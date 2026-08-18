@@ -7,6 +7,7 @@ import type {
   BookingLogEntry,
   DeliveryType,
   OrdersResponse,
+  ReconcileResult,
   SyncResult,
 } from "@/types";
 
@@ -37,6 +38,26 @@ export function useSyncOrders() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["orders"] });
     },
+  });
+}
+
+/**
+ * 서버 → 로컬 상태 역동기화 (로컬 전용).
+ *
+ * 발송은 서버 단독 책임이라 로컬은 결과를 스스로 알 수 없다. 대시보드가 열려 있는
+ * 동안 주기적으로 당겨와, 동기화 버튼을 누르지 않아도 발송완료가 따라오게 한다.
+ * 전역 staleTime(60초)을 무시하도록 staleTime을 0으로 두어 탭 복귀 시에도 재조회된다.
+ */
+export function useReconcileFromServer(enabled: boolean) {
+  return useQuery<ReconcileResult>({
+    queryKey: ["reconcile"],
+    queryFn: () =>
+      requestJson<ReconcileResult>("/api/orders/reconcile", { method: "POST" }),
+    enabled,
+    refetchInterval: 120_000, // 서버 폴링 주기(2분)와 맞춤
+    refetchOnWindowFocus: true,
+    staleTime: 0,
+    retry: false, // 서버 연결 실패는 다음 주기에 자연히 재시도된다
   });
 }
 
