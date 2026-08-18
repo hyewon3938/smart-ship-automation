@@ -177,6 +177,14 @@ export function Dashboard() {
               ? ` · 서버 상태 반영 ${result.reconciledDispatched ?? 0}건 발송완료`
               : ""),
         );
+        // 배송지가 없어 목록에 못 뜨는 주문은 화면 어디에도 흔적이 없다.
+        // 조용히 넘어가면 판매자가 존재를 모른 채 발송기한을 넘길 수 있어 따로 띄운다.
+        if (result.awaitingAddress) {
+          toast.warning(
+            `배송지 대기 ${result.awaitingAddress}건 — 선물 수령 전이라 예약할 수 없습니다`,
+            { duration: 10_000 },
+          );
+        }
       },
       onError: (error) => {
         toast.error(`동기화 실패: ${error.message}`);

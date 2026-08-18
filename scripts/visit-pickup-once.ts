@@ -116,8 +116,14 @@ async function main(): Promise<void> {
 
   // 3. 네이버 발송대기 주문 조회
   console.log("\n[2/4] 네이버 발송대기 주문 조회...");
-  const pendingOrders = await fetchPendingOrders();
-  console.log(`발송대기: ${pendingOrders.length}건`);
+  // 배송지 대기(선물 미수령) 건은 zip/phone이 없어 매칭 자체가 불가능하므로 제외
+  const { orders: pendingOrders, awaitingAddress } = await fetchPendingOrders();
+  console.log(
+    `발송대기: ${pendingOrders.length}건` +
+      (awaitingAddress.length > 0
+        ? ` (배송지 대기 ${awaitingAddress.length}건 제외)`
+        : ""),
+  );
 
   // 4. 매칭
   console.log("\n[3/4] (zip, phone 끝 4자리) 매칭...");

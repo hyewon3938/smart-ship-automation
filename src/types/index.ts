@@ -46,6 +46,8 @@ export interface SyncResult {
   reconciledDispatched?: number;
   /** 서버 역동기화로 운송장이 채워진 그룹 수 */
   reconciledTracked?: number;
+  /** 배송지 미입력이라 예약 대상에서 빠진 주문 수 (선물하기 수령 대기 추정) */
+  awaitingAddress?: number;
 }
 
 /** 서버 → 로컬 상태 역동기화 결과 (`POST /api/orders/reconcile`) */

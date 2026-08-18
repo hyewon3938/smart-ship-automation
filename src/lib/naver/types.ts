@@ -87,8 +87,22 @@ export interface ProductOrderDetail {
 }
 
 /**
+ * 배송지가 아직 없는 주문 — 대부분 "선물하기" 미수령 건.
+ *
+ * 수령자가 주소를 입력하기 전까지 네이버 응답에 `shippingAddress`가 없어 택배 예약을
+ * 걸 수 없다. 그렇다고 조용히 버리면 판매자가 존재 자체를 모르므로, 최소 정보만
+ * 뽑아 동기화 결과에 함께 실어 보낸다.
+ */
+export interface AwaitingAddressOrder {
+  productOrderId: string;
+  orderId: string;
+  orderDate: string;
+  productName: string;
+}
+
+/**
  * 조건형 API 응답 → ProductOrderDetail 변환.
- * 배송지가 없는 주문(디지털 상품 등)은 택배 자동화 대상이 아니므로 null 반환.
+ * 배송지가 없는 주문(선물하기 미수령, 디지털 상품 등)은 택배 자동화 대상이 아니므로 null 반환.
  */
 export function toProductOrderDetail(raw: ConditionalOrderContent): ProductOrderDetail | null {
   const addr = raw.productOrder.shippingAddress;
@@ -112,6 +126,35 @@ export function toProductOrderDetail(raw: ConditionalOrderContent): ProductOrder
       zipCode: addr.zipCode,
     },
   };
+}
+
+/**
+ * 조건형 API 한 페이지를 "예약 가능한 주문"과 "배송지 대기 주문"으로 가른다.
+ *
+ * 가르는 기준은 `toProductOrderDetail`의 배송지 유무 판정 하나뿐이고, 여기서는
+ * 버려지는 쪽도 최소 정보를 남겨 호출부가 사용자에게 알릴 수 있게 한다.
+ */
+export function splitByShippingAddress(
+  contents: ConditionalOrderContent[],
+): { orders: ProductOrderDetail[]; awaitingAddress: AwaitingAddressOrder[] } {
+  const orders: ProductOrderDetail[] = [];
+  const awaitingAddress: AwaitingAddressOrder[] = [];
+
+  for (const raw of contents) {
+    const mapped = toProductOrderDetail(raw);
+    if (mapped) {
+      orders.push(mapped);
+      continue;
+    }
+    awaitingAddress.push({
+      productOrderId: raw.productOrder.productOrderId,
+      orderId: raw.order.orderId,
+      orderDate: raw.order.orderDate,
+      productName: raw.productOrder.productName,
+    });
+  }
+
+  return { orders, awaitingAddress };
 }
 
 // ──────────────────────────────────────────
