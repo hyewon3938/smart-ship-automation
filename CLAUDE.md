@@ -125,7 +125,8 @@ data/                 # SQLite DB + cookies.json (gitignore)
 ### 네이버 커머스 API
 - 인증: OAuth 2.0 + bcrypt 기반 client_secret_sign
 - 토큰 엔드포인트: `POST https://api.commerce.naver.com/external/v1/oauth2/token`
-- 주문 조회: 조건형 API로 7일간 PAYED 주문 스캔 → 로컬 DB에 누적 저장
+- 주문 조회: 조건형 API로 14일간 PAYED 주문 스캔 → 로컬 DB에 누적 저장.
+  조회창은 **결제일** 기준이라 선물하기처럼 배송지가 늦게 채워지는 건도 결제일로만 잡힌다
 - 발송처리: 운송장번호 + 택배사 코드(`CJGLS`)로 자동 발송
 - Rate Limit: 토큰 버킷 알고리즘, 429 시 지수 백오프
 
