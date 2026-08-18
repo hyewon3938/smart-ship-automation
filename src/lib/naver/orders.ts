@@ -1,15 +1,23 @@
 import { getAccessToken } from "./auth";
 import {
   conditionalOrdersResponseSchema,
-  toProductOrderDetail,
+  splitByShippingAddress,
 } from "./types";
 import type { NaverItemState } from "@/lib/order-lifecycle";
-import type { ProductOrderDetail } from "./types";
+import type { AwaitingAddressOrder, ProductOrderDetail } from "./types";
 
 const BASE_URL = "https://api.commerce.naver.com/external/v1";
 const MAX_RETRIES = 3;
 const INITIAL_BACKOFF_MS = 1000;
-const LOOKBACK_DAYS = 7; // 기본 조회 기간 (일)
+/**
+ * 기본 조회 기간 (일).
+ *
+ * 조건형 API의 from~to는 **결제일** 기준이라, 선물하기 주문처럼 결제 후 며칠 뒤에야
+ * 배송지가 채워지는 건은 "수령 시점"이 아니라 여전히 결제일 창에서만 잡힌다.
+ * 7일로 두면 수령이 늦은 선물 주문이 예약도 못 해본 채 창 밖으로 빠져나가므로
+ * (2026-08 실제 누락), 선물 수락 기한을 덮고도 남게 14일로 잡는다.
+ */
+const LOOKBACK_DAYS = 14;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 /**
@@ -34,6 +42,12 @@ async function fetchWithRetry(
   throw new Error(`API 요청 실패: ${MAX_RETRIES}회 재시도 후에도 429 에러`);
 }
 
+/** 한 조회 창의 결과 — 예약 가능한 주문과 배송지 대기 주문을 함께 돌려준다 */
+interface WindowResult {
+  orders: ProductOrderDetail[];
+  awaitingAddress: AwaitingAddressOrder[];
+}
+
 /**
  * 조건형 상품 주문 상세 내역 조회 (단일 24시간 윈도우)
  * GET /v1/pay-order/seller/product-orders
@@ -45,8 +59,9 @@ async function fetchOrdersForWindow(
   from: Date,
   to: Date,
   statuses: string,
-): Promise<ProductOrderDetail[]> {
+): Promise<WindowResult> {
   const results: ProductOrderDetail[] = [];
+  const awaitingAddress: AwaitingAddressOrder[] = [];
   let page = 1;
   let hasNext = true;
 
@@ -83,18 +98,18 @@ async function fetchOrdersForWindow(
     }
 
     const parsed = conditionalOrdersResponseSchema.parse(json);
-    const mapped = parsed.data.contents
-      .map((c) => toProductOrderDetail(c.content))
-      .filter((o): o is ProductOrderDetail => o !== null);
+    const split = splitByShippingAddress(
+      parsed.data.contents.map((c) => c.content),
+    );
 
-    const skippedInPage = parsed.data.contents.length - mapped.length;
-    if (skippedInPage > 0) {
+    if (split.awaitingAddress.length > 0) {
       console.warn(
-        `[naver/orders] 배송지 없는 주문 ${skippedInPage}건 스킵 (page=${page})`,
+        `[naver/orders] 배송지 미입력(선물 수령 대기 추정) ${split.awaitingAddress.length}건 (page=${page})`,
       );
     }
 
-    results.push(...mapped);
+    results.push(...split.orders);
+    awaitingAddress.push(...split.awaitingAddress);
 
     hasNext = parsed.data.pagination.hasNext;
     page++;
@@ -105,7 +120,7 @@ async function fetchOrdersForWindow(
     }
   }
 
-  return results;
+  return { orders: results, awaitingAddress };
 }
 
 /**
@@ -114,24 +129,35 @@ async function fetchOrdersForWindow(
  * 조건형 API는 from~to 최대 24시간 제약이 있어,
  * LOOKBACK_DAYS 기간을 하루씩 나눠서 스캔한다.
  * productOrderStatuses=PAYED (결제완료 = 배송준비 상태)
+ *
+ * 배송지가 아직 없는 주문은 예약 대상에서 빼되 버리지 않고 `awaitingAddress`로
+ * 함께 돌려준다 — 판매자가 "선물 수령 대기 중인 주문이 있다"는 걸 알아야 한다.
  */
-export async function fetchPendingOrders(): Promise<ProductOrderDetail[]> {
+export async function fetchPendingOrders(): Promise<WindowResult> {
   const token = await getAccessToken();
   const now = new Date();
   const results: ProductOrderDetail[] = [];
+  const awaitingAddress: AwaitingAddressOrder[] = [];
   const seenIds = new Set<string>();
 
   for (let daysBack = 0; daysBack < LOOKBACK_DAYS; daysBack++) {
     const from = new Date(now.getTime() - (daysBack + 1) * DAY_MS);
     const to = new Date(now.getTime() - daysBack * DAY_MS);
 
-    const orders = await fetchOrdersForWindow(token, from, to, "PAYED");
+    const window = await fetchOrdersForWindow(token, from, to, "PAYED");
 
-    for (const order of orders) {
-      // 중복 제거 (윈도우 경계에서 같은 주문이 두 번 나올 수 있음)
+    // 중복 제거 (윈도우 경계에서 같은 주문이 두 번 나올 수 있음)
+    for (const order of window.orders) {
       if (!seenIds.has(order.productOrderId)) {
         seenIds.add(order.productOrderId);
         results.push(order);
+      }
+    }
+
+    for (const pending of window.awaitingAddress) {
+      if (!seenIds.has(pending.productOrderId)) {
+        seenIds.add(pending.productOrderId);
+        awaitingAddress.push(pending);
       }
     }
 
@@ -141,7 +167,7 @@ export async function fetchPendingOrders(): Promise<ProductOrderDetail[]> {
     }
   }
 
-  return results;
+  return { orders: results, awaitingAddress };
 }
 
 export interface DeliveryInfo {

@@ -69,8 +69,20 @@ export async function syncOrders(): Promise<{
   created: number;
   updated: number;
   skipped: number;
+  awaitingAddress: number;
 }> {
-  const pendingOrders = await fetchPendingOrders();
+  const { orders: pendingOrders, awaitingAddress } = await fetchPendingOrders();
+
+  if (awaitingAddress.length > 0) {
+    // 예약이 불가능한 이유가 "아직 주소가 없다"는 것뿐이므로, 나중에 주소가 채워지면
+    // 다음 동기화에서 정상 주문으로 들어온다. 여기서는 존재만 알린다.
+    console.log(
+      `[sync] 배송지 대기 ${awaitingAddress.length}건 — ` +
+        awaitingAddress
+          .map((o) => `${o.productOrderId}(${o.orderDate.slice(0, 10)})`)
+          .join(", "),
+    );
+  }
 
   let created = 0;
   let updated = 0;
@@ -102,5 +114,6 @@ export async function syncOrders(): Promise<{
     created,
     updated,
     skipped,
+    awaitingAddress: awaitingAddress.length,
   };
 }
