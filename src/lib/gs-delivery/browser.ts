@@ -1,8 +1,6 @@
 import fs from "fs";
 import path from "path";
 
-import { chromium } from "playwright";
-
 import type { Browser, BrowserContext, Page } from "playwright";
 
 let browser: Browser | null = null;
@@ -22,11 +20,17 @@ const isServerMode = () => process.env.DEPLOY_MODE === "server";
  * Playwright 브라우저 인스턴스 (싱글턴).
  * - 로컬(기본): headed 모드 (캡챠 수동 처리 가능)
  * - 서버(DEPLOY_MODE=server): headless 모드 (쿠키 재사용)
+ *
+ * playwright는 실제로 브라우저를 띄우는 이 시점에 처음 불러온다. 최상위에서
+ * import하면 이 모듈을 참조하는 라우트가 로드되는 것만으로 playwright가 실행되고,
+ * 브라우저를 쓰지 않는 서버에서도 기동 시 모듈 로드 실패가 발생한다.
  */
 export async function getBrowser(): Promise<Browser> {
   if (browser?.isConnected()) return browser;
 
   registerShutdownHandlers();
+
+  const { chromium } = await import("playwright");
 
   browser = await chromium.launch({
     headless: isServerMode(),
