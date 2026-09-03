@@ -2,8 +2,14 @@
 set -euo pipefail
 
 # .env.local에서 DEPLOY_* 설정만 로드 (다른 변수의 공백/특수문자 영향 회피)
+#
+# `|| [ -n "$line" ]` — 마지막 줄에 개행이 없으면 read가 비정상 종료 코드를 돌려주어
+# 그 줄이 통째로 사라진다. 편집기에 따라 개행 없이 저장되므로, 새로 추가한 변수가
+# 마지막 줄이면 설정해도 안 읽히는 형태로 조용히 실패한다.
+# CR 제거 — CRLF로 저장된 경우 값 끝에 \r 이 붙어 경로·호스트가 어긋난다.
 if [ -f .env.local ]; then
-  while IFS= read -r line; do
+  while IFS= read -r line || [ -n "$line" ]; do
+    line="${line%$'\r'}"
     case "$line" in
       DEPLOY_*=*) export "$line" ;;
     esac
