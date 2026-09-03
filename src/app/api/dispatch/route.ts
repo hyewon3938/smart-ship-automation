@@ -43,7 +43,7 @@ export async function POST(request: NextRequest) {
       trackingNumber: group.trackingNumber,
     });
 
-    if (result.success) {
+    if (result.outcome === "dispatched") {
       updateDispatchStatus(orderId, "dispatched");
       addBookingLog(
         group.firstDbId,
@@ -53,11 +53,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ message: "발송처리 완료", orderId });
     }
 
-    updateDispatchStatus(orderId, "dispatch_failed");
+    // unverified는 발송 여부를 모르는 상태 — 완료로 기록하지 않되 실패로도 확정하지
+    // 않는다. pending_dispatch로 남겨 다음 폴링이 다시 시도한다.
+    if (result.outcome === "failed") {
+      updateDispatchStatus(orderId, "dispatch_failed");
+    }
     addBookingLog(
       group.firstDbId,
       "error",
-      `발송처리 실패: ${result.error}`
+      `발송처리 ${result.outcome === "failed" ? "실패" : "확인 불가"}: ${result.error}`
     );
     return NextResponse.json(
       { error: result.error ?? "발송처리 실패" },

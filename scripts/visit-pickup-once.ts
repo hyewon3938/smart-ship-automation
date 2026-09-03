@@ -206,7 +206,7 @@ async function main(): Promise<void> {
       deliveryCompanyCode: DELIVERY_COMPANY_CODES.domestic, // CJGLS
       trackingNumber: m.trackingNo,
     });
-    if (result.success) {
+    if (result.outcome === "dispatched") {
       successPO += m.productOrderIds.length;
       console.log(
         `  ✅ ${maskName(m.recipientName)} (${m.trackingNo}) — productOrder ${m.productOrderIds.length}건`,

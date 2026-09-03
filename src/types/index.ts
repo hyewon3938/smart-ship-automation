@@ -106,7 +106,7 @@ export interface BookingDefaults {
 export interface DispatchSettings {
   autoMode: boolean;
   pollIntervalMin: number;
-  /** 내일배송 택배사 코드 (기본값 DELIVERBOX — 실제 확인 필요) */
+  /** 내일배송 택배사 코드 (기본값 JMNP — 딜리박스) */
   nextDayDeliveryCode: string;
 }
 
