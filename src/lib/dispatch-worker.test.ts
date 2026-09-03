@@ -7,7 +7,7 @@ const mocks = vi.hoisted(() => ({
   updateDispatchStatus: vi.fn(),
   addBookingLog: vi.fn(),
   dispatchOrders: vi.fn(),
-  getNextDayDeliveryCode: vi.fn(() => "HDEXP"),
+  getNextDayDeliveryCode: vi.fn(() => "JMNP"),
   scrapeTrackingNumbers: vi.fn(),
   updateTrackingNumbers: vi.fn(),
 }));
@@ -48,7 +48,11 @@ vi.mock("@/lib/gs-delivery/scrape-visit-pickup", () => ({
   scrapeVisitPickup: vi.fn(),
 }));
 
-import { checkAndDispatch, dispatchBookedGroups } from "./dispatch-worker";
+import {
+  _resetUnverifiedAttemptsForTest,
+  checkAndDispatch,
+  dispatchBookedGroups,
+} from "./dispatch-worker";
 
 interface Group {
   orderId: string;
@@ -78,8 +82,9 @@ function group(overrides: Partial<Group> = {}): Group {
 describe("dispatchBookedGroups", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.dispatchOrders.mockResolvedValue({ success: true });
-    mocks.getNextDayDeliveryCode.mockReturnValue("HDEXP");
+    mocks.dispatchOrders.mockResolvedValue({ outcome: "dispatched" });
+    mocks.getNextDayDeliveryCode.mockReturnValue("JMNP");
+    _resetUnverifiedAttemptsForTest();
   });
 
   it("운송장 있고 pending인 그룹을 발송하고 dispatched로 표시한다", async () => {
@@ -139,14 +144,14 @@ describe("dispatchBookedGroups", () => {
     await dispatchBookedGroups();
 
     expect(mocks.dispatchOrders).toHaveBeenCalledWith(
-      expect.objectContaining({ deliveryCompanyCode: "HDEXP" }),
+      expect.objectContaining({ deliveryCompanyCode: "JMNP" }),
     );
   });
 
   it("발송 실패 시 failed에 담고 dispatch_failed로 표시한다", async () => {
     mocks.getBookedOrderGroups.mockReturnValue([group({ orderId: "A" })]);
     mocks.dispatchOrders.mockResolvedValue({
-      success: false,
+      outcome: "failed",
       error: "네이버 거절",
     });
 
@@ -159,6 +164,63 @@ describe("dispatchBookedGroups", () => {
       "dispatch_failed",
     );
   });
+
+  it("반영 확인 불가(unverified)는 완료로도 실패로도 기록하지 않는다", async () => {
+    mocks.getBookedOrderGroups.mockReturnValue([group({ orderId: "A" })]);
+    mocks.dispatchOrders.mockResolvedValue({
+      outcome: "unverified",
+      error: "네이버 상태 조회 실패",
+    });
+
+    const result = await dispatchBookedGroups();
+
+    expect(result.dispatched).toEqual([]);
+    expect(result.failed).toEqual([
+      { orderId: "A", error: "네이버 상태 조회 실패" },
+    ]);
+    expect(mocks.updateDispatchStatus).not.toHaveBeenCalled();
+  });
+
+  it("unverified가 상한만큼 반복되면 실패로 확정한다", async () => {
+    mocks.getBookedOrderGroups.mockReturnValue([group({ orderId: "A" })]);
+    mocks.dispatchOrders.mockResolvedValue({
+      outcome: "unverified",
+      error: "네이버 상태 조회 실패",
+    });
+
+    await dispatchBookedGroups();
+    await dispatchBookedGroups();
+    expect(mocks.updateDispatchStatus).not.toHaveBeenCalled();
+
+    await dispatchBookedGroups();
+
+    expect(mocks.updateDispatchStatus).toHaveBeenCalledWith(
+      "A",
+      "dispatch_failed",
+    );
+  });
+
+  it("발송 성공 후에는 이전 unverified 카운트를 잊는다", async () => {
+    mocks.getBookedOrderGroups.mockReturnValue([group({ orderId: "A" })]);
+    mocks.dispatchOrders.mockResolvedValue({
+      outcome: "unverified",
+      error: "네이버 상태 조회 실패",
+    });
+    await dispatchBookedGroups();
+    await dispatchBookedGroups();
+
+    mocks.dispatchOrders.mockResolvedValue({ outcome: "dispatched" });
+    await dispatchBookedGroups();
+
+    mocks.dispatchOrders.mockResolvedValue({
+      outcome: "unverified",
+      error: "네이버 상태 조회 실패",
+    });
+    await dispatchBookedGroups();
+
+    expect(mocks.updateDispatchStatus).toHaveBeenCalledTimes(1);
+    expect(mocks.updateDispatchStatus).toHaveBeenCalledWith("A", "dispatched");
+  });
 });
 
 describe("checkAndDispatch — 운송장 스크래핑 시간 게이트 (예약 후 1시간 하이브리드)", () => {
@@ -169,7 +231,7 @@ describe("checkAndDispatch — 운송장 스크래핑 시간 게이트 (예약 �
   beforeEach(() => {
     vi.clearAllMocks();
     vi.useFakeTimers();
-    mocks.dispatchOrders.mockResolvedValue({ success: true });
+    mocks.dispatchOrders.mockResolvedValue({ outcome: "dispatched" });
     mocks.scrapeTrackingNumbers.mockResolvedValue([]);
   });
 

@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 
 import { db } from "@/lib/db";
 import { settings } from "@/lib/db/schema";
+import { normalizeNextDayDeliveryCode } from "@/lib/naver/delivery-companies";
 import type {
   AllSettings,
   BookingDefaults,
@@ -68,7 +69,7 @@ export function getAllSettings(): AllSettings {
     dispatch: {
       autoMode: getSetting("dispatch.autoMode") === "true",
       pollIntervalMin: Number(getSetting("dispatch.pollIntervalMin") ?? "5"),
-      nextDayDeliveryCode: getSetting("dispatch.nextDayDeliveryCode") ?? "DELIVERBOX",
+      nextDayDeliveryCode: getNextDayDeliveryCode(),
     },
   };
 }
@@ -100,7 +101,7 @@ export function getAllSettingsRaw(): AllSettings {
     dispatch: {
       autoMode: getSetting("dispatch.autoMode") === "true",
       pollIntervalMin: Number(getSetting("dispatch.pollIntervalMin") ?? "5"),
-      nextDayDeliveryCode: getSetting("dispatch.nextDayDeliveryCode") ?? "DELIVERBOX",
+      nextDayDeliveryCode: getNextDayDeliveryCode(),
     },
   };
 }
@@ -151,7 +152,7 @@ export function getDispatchPollIntervalMs(): number {
   return min * 60 * 1000;
 }
 
-/** 내일배송 택배사 코드 조회 */
+/** 내일배송 택배사 코드 조회 (폐기된 자리표시자 값은 기본값으로 정규화) */
 export function getNextDayDeliveryCode(): string {
-  return getSetting("dispatch.nextDayDeliveryCode") ?? "DELIVERBOX";
+  return normalizeNextDayDeliveryCode(getSetting("dispatch.nextDayDeliveryCode"));
 }

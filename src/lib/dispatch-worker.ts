@@ -47,6 +47,21 @@ const SCRAPE_END_HOUR = 18; // 오후 6시
 const RECENT_BOOKING_WINDOW_MS = 60 * 60 * 1000; // 60분
 
 /**
+ * 발송 반영을 확인하지 못한(unverified) 그룹의 연속 시도 횟수 상한.
+ *
+ * 네이버 상태 조회가 계속 실패하면 발송 여부를 판정할 수 없다. 그 상태로 두면
+ * 폴링마다 발송 요청을 다시 보내게 되므로, 몇 번 시도한 뒤에는 실패로 확정해
+ * 사용자에게 보이게 한다 — 조용히 반복하는 것보다 눈에 띄는 실패가 낫다.
+ */
+const MAX_UNVERIFIED_ATTEMPTS = 3;
+const unverifiedAttempts = new Map<string, number>();
+
+/** 테스트용 — 발송 확인 실패 카운터 초기화 */
+export function _resetUnverifiedAttemptsForTest(): void {
+  unverifiedAttempts.clear();
+}
+
+/**
  * 방문택배 GS 상세페이지 재요청 throttle.
  *
  * PR #60 직후 dispatch-worker가 매 폴링마다 `scrapeVisitPickup([])` 호출 →
@@ -179,7 +194,8 @@ export async function dispatchBookedGroups(orderIds?: string[]): Promise<{
         trackingNumber: group.trackingNumber!,
       });
 
-      if (dispatchResult.success) {
+      if (dispatchResult.outcome === "dispatched") {
+        unverifiedAttempts.delete(group.orderId);
         updateDispatchStatus(group.orderId, "dispatched");
         addBookingLog(
           group.firstDbId,
@@ -190,15 +206,37 @@ export async function dispatchBookedGroups(orderIds?: string[]): Promise<{
         console.log(
           `[dispatch-worker] ✅ 발송처리 완료 — 주문: ${maskId(group.orderId)}`,
         );
-      } else {
-        updateDispatchStatus(group.orderId, "dispatch_failed");
-        const errMsg = dispatchResult.error ?? "알 수 없는 오류";
-        addBookingLog(group.firstDbId, "error", `발송처리 실패: ${errMsg}`);
-        failed.push({ orderId: group.orderId, error: errMsg });
-        console.error(
-          `[dispatch-worker] ❌ 발송처리 실패 — ${maskId(group.orderId)}: ${errMsg}`,
-        );
+        continue;
       }
+
+      const errMsg = dispatchResult.error ?? "알 수 없는 오류";
+
+      // 반영 여부를 확인하지 못한 건은 완료로도 실패로도 확정하지 않는다.
+      // pending_dispatch로 남겨 다음 폴링이 재시도하되, 상한을 넘기면 실패 처리.
+      if (dispatchResult.outcome === "unverified") {
+        const attempts = (unverifiedAttempts.get(group.orderId) ?? 0) + 1;
+        unverifiedAttempts.set(group.orderId, attempts);
+        if (attempts < MAX_UNVERIFIED_ATTEMPTS) {
+          addBookingLog(
+            group.firstDbId,
+            "error",
+            `발송 반영 확인 불가 (${attempts}/${MAX_UNVERIFIED_ATTEMPTS}회) — 다음 폴링에서 재시도: ${errMsg}`,
+          );
+          failed.push({ orderId: group.orderId, error: errMsg });
+          console.warn(
+            `[dispatch-worker] ⚠️ 발송 반영 확인 불가 (${attempts}/${MAX_UNVERIFIED_ATTEMPTS}) — ${maskId(group.orderId)}: ${errMsg}`,
+          );
+          continue;
+        }
+      }
+
+      unverifiedAttempts.delete(group.orderId);
+      updateDispatchStatus(group.orderId, "dispatch_failed");
+      addBookingLog(group.firstDbId, "error", `발송처리 실패: ${errMsg}`);
+      failed.push({ orderId: group.orderId, error: errMsg });
+      console.error(
+        `[dispatch-worker] ❌ 발송처리 실패 — ${maskId(group.orderId)}: ${errMsg}`,
+      );
     } catch (err) {
       const msg = err instanceof Error ? err.message : "알 수 없는 오류";
       failed.push({ orderId: group.orderId, error: msg });
