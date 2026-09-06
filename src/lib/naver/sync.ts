@@ -16,7 +16,10 @@ function upsertOrder(order: ProductOrderDetail, existing: Order | undefined): vo
   const baseAddress = order.shippingAddress.baseAddress;
   const detailedAddress = order.shippingAddress.detailedAddress ?? null;
   const fullAddress = `${baseAddress} ${detailedAddress ?? ""}`.trim();
-  const isNextDay = isNextDayDeliveryEligible(fullAddress);
+  const isNextDay = isNextDayDeliveryEligible(
+    fullAddress,
+    order.shippingAddress.zipCode,
+  );
 
   if (existing) {
     db.update(orders)
@@ -55,7 +58,9 @@ function upsertOrder(order: ProductOrderDetail, existing: Order | undefined): vo
         shippingMemo: order.shippingMemo,
         status: "pending",
         isNextDayEligible: isNextDay,
-        selectedDeliveryType: isNextDay ? "nextDay" : "domestic",
+        // 전국이 열려 대부분이 내일배송 가능이 된다. 자동으로 태우면 요금 판단이
+        // 사라지므로 기본은 국내택배로 두고, 내일배송은 목록에서 직접 고른다.
+        selectedDeliveryType: "domestic",
       })
       .run();
   }

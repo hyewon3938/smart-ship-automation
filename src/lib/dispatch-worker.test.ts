@@ -7,7 +7,7 @@ const mocks = vi.hoisted(() => ({
   updateDispatchStatus: vi.fn(),
   addBookingLog: vi.fn(),
   dispatchOrders: vi.fn(),
-  getNextDayDeliveryCode: vi.fn(() => "JMNP"),
+  getNextDayDeliveryCode: vi.fn(() => "CJGLS"),
   scrapeTrackingNumbers: vi.fn(),
   updateTrackingNumbers: vi.fn(),
 }));
@@ -83,7 +83,7 @@ describe("dispatchBookedGroups", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.dispatchOrders.mockResolvedValue({ outcome: "dispatched" });
-    mocks.getNextDayDeliveryCode.mockReturnValue("JMNP");
+    mocks.getNextDayDeliveryCode.mockReturnValue("CJGLS");
     _resetUnverifiedAttemptsForTest();
   });
 
@@ -144,7 +144,7 @@ describe("dispatchBookedGroups", () => {
     await dispatchBookedGroups();
 
     expect(mocks.dispatchOrders).toHaveBeenCalledWith(
-      expect.objectContaining({ deliveryCompanyCode: "JMNP" }),
+      expect.objectContaining({ deliveryCompanyCode: "CJGLS" }),
     );
   });
 

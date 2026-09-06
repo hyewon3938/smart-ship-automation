@@ -66,10 +66,10 @@ export function DispatchSettingsTab({ initial }: Props) {
           onChange={(e) =>
             setForm((prev) => ({ ...prev, nextDayDeliveryCode: e.target.value }))
           }
-          placeholder="JMNP"
+          placeholder="CJGLS"
         />
         <p className="text-xs text-muted-foreground">
-          내일배송 배송사 코드 (네이버 API 기준). 기본값 JMNP는 딜리박스이며,
+          내일배송 배송사 코드 (네이버 API 기준). 기본값 CJGLS는 CJ대한통운이며,
           발송처리 후 네이버 상태를 다시 조회해 실제 반영을 확인합니다.
         </p>
       </div>

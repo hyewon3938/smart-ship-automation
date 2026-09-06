@@ -1,6 +1,7 @@
 import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import * as schema from "./schema";
+import { migrateNextDayNationwide } from "./migrations";
 import path from "path";
 import fs from "fs";
 
@@ -34,6 +35,9 @@ function addColumnIfNotExists(
   const cols = sqlite.prepare(`PRAGMA table_info(${table})`).all() as Array<{
     name: string;
   }>;
+  // 테이블 자체가 없으면 PRAGMA는 빈 배열을 주지만 ALTER TABLE은 예외를 던진다.
+  // 스키마는 drizzle-kit push로 세우므로 새 DB 첫 기동에는 아직 없을 수 있다
+  if (cols.length === 0) return;
   if (!cols.some((c) => c.name === column)) {
     sqlite
       .prepare(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`)
@@ -45,5 +49,8 @@ addColumnIfNotExists("orders", "tracking_number", "TEXT");
 addColumnIfNotExists("orders", "dispatch_status", "TEXT");
 addColumnIfNotExists("orders", "dispatched_at", "TEXT");
 addColumnIfNotExists("orders", "booked_at", "TEXT");
+
+// 컬럼 추가 이후에 실행 — 재계산이 읽는 컬럼이 모두 있어야 한다
+migrateNextDayNationwide(sqlite);
 
 export const db = drizzle(sqlite, { schema });
