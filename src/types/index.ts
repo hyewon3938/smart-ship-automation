@@ -106,7 +106,7 @@ export interface BookingDefaults {
 export interface DispatchSettings {
   autoMode: boolean;
   pollIntervalMin: number;
-  /** 내일배송 택배사 코드 (기본값 JMNP — 딜리박스) */
+  /** 내일배송 택배사 코드 (기본값 CJGLS — CJ대한통운) */
   nextDayDeliveryCode: string;
 }
 

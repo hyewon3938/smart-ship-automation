@@ -14,7 +14,7 @@ import { dispatchOrders } from "./dispatch";
 
 const REQ = {
   productOrderIds: ["po-1", "po-2"],
-  deliveryCompanyCode: "JMNP",
+  deliveryCompanyCode: "CJGLS",
   trackingNumber: "343500091641",
 };
 
@@ -71,7 +71,7 @@ describe("dispatchOrders", () => {
     const result = await run();
 
     expect(result.outcome).toBe("failed");
-    expect(result.error).toContain("JMNP");
+    expect(result.error).toContain("CJGLS");
     expect(result.error).toContain("PAYED");
   });
 
