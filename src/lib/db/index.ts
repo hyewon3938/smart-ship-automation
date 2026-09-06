@@ -1,6 +1,7 @@
 import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import * as schema from "./schema";
+import { migrateNextDayNationwide } from "./migrations";
 import path from "path";
 import fs from "fs";
 
@@ -45,5 +46,8 @@ addColumnIfNotExists("orders", "tracking_number", "TEXT");
 addColumnIfNotExists("orders", "dispatch_status", "TEXT");
 addColumnIfNotExists("orders", "dispatched_at", "TEXT");
 addColumnIfNotExists("orders", "booked_at", "TEXT");
+
+// 컬럼 추가 이후에 실행 — 재계산이 읽는 컬럼이 모두 있어야 한다
+migrateNextDayNationwide(sqlite);
 
 export const db = drizzle(sqlite, { schema });
