@@ -13,7 +13,18 @@ import fs from "fs";
 // cwd 를 .next/standalone 로 바꿔버려서, PM2 의 cwd 설정을 덮어씀.
 // process.cwd() 만 사용하면 standalone 모드에서 .next/standalone/data 에 별도 DB 가
 // 생성되어 프로젝트 루트의 data 와 분리되는 문제가 발생함.
-const DB_PATH = process.env.SMART_SHIP_DB_PATH
+//
+// 테스트 실행(VITEST)에서는 기본값으로 물러서지 않고 즉시 실패한다.
+// 이 모듈은 import 되는 것만으로 ALTER TABLE 과 데이터 마이그레이션을 실행하므로,
+// 기본값을 허용하면 테스트가 개발자의 실제 DB 를 고쳐버린다. (vitest.setup.ts 참고)
+if (process.env.VITEST && !process.env.SMART_SHIP_DB_PATH) {
+  throw new Error(
+    "테스트에서 SMART_SHIP_DB_PATH 없이 DB 를 열려고 했습니다. " +
+      "vitest.config.mts 의 setupFiles(vitest.setup.ts) 설정을 확인하세요.",
+  );
+}
+
+export const DB_PATH = process.env.SMART_SHIP_DB_PATH
   ? process.env.SMART_SHIP_DB_PATH
   : path.join(process.cwd(), "data", "smart-ship.db");
 
