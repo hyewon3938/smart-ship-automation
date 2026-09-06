@@ -60,8 +60,14 @@ refactor(db): orders 테이블 스키마 마이그레이션 추가
 - **테스트 도구:** Vitest
 - **테스트 파일 위치:** 소스 파일 옆 (`auth.test.ts`, `regions.test.ts`)
 - **커버리지 기준:** 설정하지 않음 (핵심 로직만 선택적 테스트)
+- **DB 격리:** `vitest.setup.ts`가 `SMART_SHIP_DB_PATH`를 테스트 파일마다 임시 경로로
+  돌려서 개발용 `data/smart-ship.db`를 건드리지 않는다. 이 임시 DB에는 테이블이 없으니,
+  DB를 실제로 읽고 쓰는 테스트는 `migrations.test.ts`처럼 `:memory:` DB에 필요한 테이블을
+  직접 만들어 쓴다
 
-**근거:** Playwright 자동화는 외부 사이트 의존이라 E2E 테스트 불가. 순수 로직만 테스트
+**근거:** Playwright 자동화는 외부 사이트 의존이라 E2E 테스트 불가. 순수 로직만 테스트.
+`@/lib/db`는 import만으로 SQLite 파일을 열고 스키마를 고치므로, 격리 없이 돌리면 테스트가
+개발 데이터를 바꾼다
 
 ### 가독성 원칙
 
