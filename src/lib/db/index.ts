@@ -35,6 +35,9 @@ function addColumnIfNotExists(
   const cols = sqlite.prepare(`PRAGMA table_info(${table})`).all() as Array<{
     name: string;
   }>;
+  // 테이블 자체가 없으면 PRAGMA는 빈 배열을 주지만 ALTER TABLE은 예외를 던진다.
+  // 스키마는 drizzle-kit push로 세우므로 새 DB 첫 기동에는 아직 없을 수 있다
+  if (cols.length === 0) return;
   if (!cols.some((c) => c.name === column)) {
     sqlite
       .prepare(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`)
