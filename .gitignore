@@ -58,3 +58,9 @@ docs/private/
 
 # Claude Code 로컬 권한 캐시 (개발자별로 다름)
 .claude/settings.local.json
+
+# 로컬 전용 작업 문서
+LOCAL-*.md
+
+# Claude Code worktree 폴더
+.claude/worktrees/
