@@ -84,7 +84,7 @@ src/
 
 docs/                 # 프로젝트 문서
 data/                 # SQLite DB + cookies.json (gitignore)
-.claude/commands/     # 개발 워크플로우 스킬
+.claude/worktrees/    # 세션별 git worktree (gitignore)
 ```
 
 ## 개발 규칙 요약
@@ -100,17 +100,20 @@ data/                 # SQLite DB + cookies.json (gitignore)
 
 ## Claude 작업 규칙
 
-### 개발 워크플로우
-```
-기능 개발: /design → /compact → /model sonnet → /build
-소규모 수정: /design이 자동 판단하여 직접 처리
-코드 리뷰만: /review-code
-```
+### 작업 방식
+
+워크플로우 스킬은 사용자 레벨(`~/.claude/skills/`)에 설치한 것을 쓴다.
+
+- **기획:** `/design`이 설계 문서와 이슈를 만들고, 작업을 세션으로 나눠 대기열에 넣는다
+- **구현:** 새 세션에서 `/next`로 대기열 맨 앞 세션을 열거나 `/build <세션 이름>`으로 고른 세션을 연다. 대기열에 넣지 않은 작은 수정은 `/build #<이슈번호>`로 바로 연다
+- **배포 뒤 확인:** `/track`으로 `LOCAL-TRACK.md`의 확인 항목을 처리한다
+- **코드 리뷰만:** `/review-code`
+- **세션 단위:** 세션 하나는 이슈 1개, 브랜치 1개, PR 1개다. 이슈부터 만들고, `.claude/worktrees/` 아래 이름 붙인 worktree에서 진행한다
+- **로컬 파일:** 대기열 `LOCAL-SESSIONS.md`와 배포 뒤 확인 목록 `LOCAL-TRACK.md`는 커밋하지 않는다. 둘 다 메인 체크아웃 루트에만 있으므로 worktree 안에서 작업할 때도 그 경로의 파일을 읽고 고친다
 
 ### 반드시 지킬 것
 - **변경 전 기존 코드를 반드시 읽고 이해할 것**
-- 커밋이 3~5개 쌓이거나 주제가 바뀌면 커밋/브랜치/PR 제안할 것
-- 하나의 브랜치에 다른 기능이 섞이면 PR 머지 후 새 브랜치 전환 권유
+- 작업 중에 세션 범위 밖의 일이 생기면 이슈를 따로 만들어 다른 세션에서 진행하길 제안할 것
 - 기능 추가 시 테스트 가능하면 테스트 코드 작성 + 실행
 - PR/커밋에 민감한 env 정보 포함 금지
 - `docs/project-history.md`에 주요 변경사항 기록
