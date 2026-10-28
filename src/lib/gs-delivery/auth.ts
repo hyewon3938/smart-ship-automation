@@ -26,10 +26,9 @@ export class LoginError extends Error {
  * 현재 로그인 상태를 확인한다.
  * 국내택배 페이지에 접근하여 로그인 여부를 판별.
  * - 비로그인: "현재 비로그인 상태입니다" 텍스트 또는 로그인 폼 표시
- * - 로그인됨: "마이페이지" 링크 표시 + 비로그인 텍스트 없음
+ * - 로그인됨: 로그아웃 링크 표시 + 비로그인 텍스트 없음
  *
- * domcontentloaded 직후에는 서버 렌더링 HTML에 마이페이지 링크가 남아있을 수 있으므로
- * JS 실행 완료를 기다린 뒤 비로그인 상태도 함께 확인한다.
+ * JS가 세션 상태를 반영할 시간을 준 뒤 비로그인 텍스트를 먼저 확인한다.
  */
 export async function isLoggedIn(page: Page): Promise<boolean> {
   try {
@@ -58,21 +57,59 @@ export async function isLoggedIn(page: Page): Promise<boolean> {
       return false;
     }
 
-    // "마이페이지" 링크 또는 "로그아웃" 링크가 보이면 로그인 상태
-    const [myPageVisible, logoutVisible] = await Promise.all([
-      page
-        .locator(LOGIN_SELECTORS.LOGGED_IN_INDICATOR)
-        .isVisible({ timeout: 3000 })
-        .catch(() => false),
-      page
-        .locator("a:has-text('로그아웃')")
-        .isVisible({ timeout: 3000 })
-        .catch(() => false),
-    ]);
-    return myPageVisible || logoutVisible;
+    // 로그아웃 링크가 보이면 로그인 상태
+    return await page
+      .locator(LOGIN_SELECTORS.LOGGED_IN_INDICATOR)
+      .isVisible({ timeout: 3000 })
+      .catch(() => false);
   } catch {
     return false;
   }
+}
+
+/** 로그인 완료를 확인하는 폴링 간격 */
+const LOGIN_POLL_INTERVAL_MS = 3_000;
+
+/** 로그인 완료를 기다리는 최대 시간 — 사용자가 캡챠를 직접 체크하는 시간을 포함한다 */
+export const LOGIN_WAIT_MS = 120_000;
+
+/**
+ * 로그인이 완료될 때까지 폴링으로 기다린다.
+ *
+ * 셀렉터 하나가 나타나는 것으로 판정하면 비로그인 페이지에도 있는 요소를 보고
+ * 성공으로 오판하므로, 주기적으로 로그인 상태를 다시 확인한다.
+ * Turnstile 캡챠가 자동 통과되면 몇 초, 사용자가 직접 체크하면 그만큼 걸린다.
+ *
+ * @returns 로그인이 확인되면 true, 대기 시간을 넘기거나 창이 닫히면 false
+ */
+export async function waitForLogin(
+  page: Page,
+  maxWaitMs: number = LOGIN_WAIT_MS
+): Promise<boolean> {
+  let elapsed = 0;
+
+  while (elapsed < maxWaitMs) {
+    await page.waitForTimeout(LOGIN_POLL_INTERVAL_MS);
+    elapsed += LOGIN_POLL_INTERVAL_MS;
+
+    if (page.isClosed()) {
+      console.warn("[auth] 브라우저 창이 닫혔습니다");
+      return false;
+    }
+
+    const logoutVisible = await page
+      .locator(LOGIN_SELECTORS.LOGGED_IN_INDICATOR)
+      .isVisible({ timeout: 500 })
+      .catch(() => false);
+    if (logoutVisible) return true;
+
+    const url = page.url();
+    if (url.includes("reservation-inquiry") || url.includes("my-page")) {
+      if (await isLoggedIn(page)) return true;
+    }
+  }
+
+  return page.isClosed() ? false : isLoggedIn(page);
 }
 
 /**
@@ -110,64 +147,44 @@ export async function login(page: Page): Promise<void> {
 
   // Turnstile 캡챠 토큰 대기 (자동 완료되거나 사용자가 수동으로 체크)
   console.log("[auth] Turnstile 캡챠 대기 중... (자동 통과 또는 브라우저에서 직접 체크)");
-  try {
-    await page.waitForFunction(
+  const tokenReady = await page
+    .waitForFunction(
       (selector) => {
         const el = document.querySelector(selector) as HTMLInputElement | null;
         return el && el.value.length > 0;
       },
       LOGIN_SELECTORS.TURNSTILE_RESPONSE,
       { timeout: LOGIN_TIMEOUT_MS }
-    );
-    console.log("[auth] Turnstile 캡챠 토큰 확인 완료");
-  } catch {
-    console.warn("[auth] Turnstile 토큰 대기 타임아웃 — 로그인 버튼 클릭 시도");
-  }
+    )
+    .then(() => true)
+    .catch(() => false);
+  console.log(
+    tokenReady
+      ? "[auth] Turnstile 캡챠 토큰 확인 완료"
+      : "[auth] Turnstile 토큰 대기 타임아웃 — 로그인 버튼 클릭 시도"
+  );
 
   await page.waitForTimeout(ACTION_DELAY_MS);
 
-  // 로그인 버튼 클릭
-  await page.locator(LOGIN_SELECTORS.SUBMIT).click();
+  // 로그인 버튼 클릭. 사용자가 먼저 눌러 페이지가 넘어갔으면 버튼이 없으므로 넘어간다
+  await page
+    .locator(LOGIN_SELECTORS.SUBMIT)
+    .click({ timeout: 5_000 })
+    .catch(() => {
+      console.log("[auth] 로그인 버튼 클릭 생략 — 페이지가 이미 넘어간 상태");
+    });
 
-  // 로그인 성공 대기
-  try {
-    // 방법 1: 마이페이지 링크 등장 (a[href*='my-page'])
-    // 방법 2: 국내택배 예약 페이지로 리다이렉트
-    // 방법 3: "로그아웃" 텍스트 등장 (가장 확실한 신호)
-    await Promise.race([
-      page.waitForSelector(LOGIN_SELECTORS.LOGGED_IN_INDICATOR, {
-        timeout: LOGIN_TIMEOUT_MS,
-      }),
-      page.waitForURL("**/reservation-inquiry/**", {
-        timeout: LOGIN_TIMEOUT_MS,
-      }),
-      page.waitForSelector("a:has-text('로그아웃')", {
-        timeout: LOGIN_TIMEOUT_MS,
-      }),
-    ]);
-  } catch {
-    // 로그인 실패 원인 확인
-    const bodyText = await page.evaluate(() =>
-      document.body.innerText.substring(0, 300)
-    );
-    const isServer = process.env.DEPLOY_MODE === "server";
-    throw new LoginError(
-      isServer
-        ? "GS택배 로그인 실패 (서버 headless 모드): Turnstile 캡챠를 통과할 수 없습니다. " +
-          "로컬에서 로그인하여 쿠키를 서버에 동기화해주세요."
-        : "로그인 실패: 60초 내에 로그인이 완료되지 않았습니다. " +
-          "브라우저 창에서 캡챠를 확인하세요.\n" +
-          `페이지 내용: ${bodyText}`
-    );
-  }
-
-  // 로그인 성공 여부를 실제 페이지에서 재검증 (거짓 양성 방지)
-  const verified = await isLoggedIn(page);
+  // 로그인 완료 대기 — 캡챠를 사용자가 직접 처리하는 시간을 포함해 폴링한다
+  const verified = await waitForLogin(page);
   if (!verified) {
-    console.error("[auth] 로그인 후 검증 실패 — 세션이 유효하지 않음");
+    const bodyText = await page
+      .evaluate(() => document.body.innerText.substring(0, 300))
+      .catch(() => "");
+    console.error("[auth] 로그인 검증 실패 — 세션이 유효하지 않음");
     throw new LoginError(
-      "GS택배 로그인에 실패했습니다. Turnstile 캡챠가 통과되지 않았을 수 있습니다. " +
-      "로컬에서 예약을 실행하여 쿠키를 서버에 동기화해주세요."
+      `로그인이 완료되지 않았습니다 (${LOGIN_WAIT_MS / 1000}초 대기). ` +
+        "브라우저 창에서 Turnstile 캡챠를 체크하고 로그인 버튼을 눌러주세요.\n" +
+        `페이지 내용: ${bodyText}`
     );
   }
 
