@@ -10,7 +10,7 @@ import fs from "fs";
 import path from "path";
 
 import { newPage, saveCookies } from "./browser";
-import { isLoggedIn } from "./auth";
+import { isLoggedIn, waitForLogin, LOGIN_WAIT_MS } from "./auth";
 import { GS_URLS, LOGIN_SELECTORS, ACTION_DELAY_MS } from "./selectors";
 import { getConfigValue } from "@/lib/settings";
 import { syncCookiesToServer } from "@/lib/sync-to-server";
@@ -80,35 +80,11 @@ export async function loginDirect(): Promise<{
     await page.locator(LOGIN_SELECTORS.USERNAME).fill(username);
     await page.locator(LOGIN_SELECTORS.PASSWORD).fill(password);
 
-    console.log("[login-direct] 로그인 페이지 열림 — 브라우저에서 CAPTCHA 처리 대기 (최대 120초)...");
+    console.log(
+      `[login-direct] 로그인 페이지 열림 — 브라우저에서 CAPTCHA 처리 대기 (최대 ${LOGIN_WAIT_MS / 1000}초)...`
+    );
 
-    // 로그인 성공까지 최대 120초 대기 (3초 간격 폴링)
-    const maxWait = 120_000;
-    const interval = 3_000;
-    let elapsed = 0;
-
-    while (elapsed < maxWait) {
-      await page.waitForTimeout(interval);
-      elapsed += interval;
-
-      if (page.isClosed()) {
-        return { success: false, message: "브라우저 창이 닫혔습니다." };
-      }
-
-      // URL이 바뀌거나 로그아웃 버튼이 보이면 로그인 성공
-      const url = page.url();
-      if (url.includes("reservation-inquiry") || url.includes("my-page")) {
-        break;
-      }
-      const logoutVisible = await page
-        .locator("a:has-text('로그아웃')")
-        .isVisible({ timeout: 500 })
-        .catch(() => false);
-      if (logoutVisible) break;
-    }
-
-    // 최종 로그인 확인
-    if (await isLoggedIn(page)) {
+    if (await waitForLogin(page)) {
       await saveCookies();
       void syncCookiesAfterSave();
       console.log("[login-direct] 로그인 성공 — 쿠키 저장 완료");
@@ -117,7 +93,7 @@ export async function loginDirect(): Promise<{
 
     return {
       success: false,
-      message: "로그인 시간이 초과되었습니다 (120초). 다시 시도해주세요.",
+      message: `로그인이 완료되지 않았습니다 (${LOGIN_WAIT_MS / 1000}초 대기). 브라우저 창에서 캡챠를 체크한 뒤 다시 시도해주세요.`,
     };
   } catch (e) {
     const msg = e instanceof Error ? e.message : "알 수 없는 오류";

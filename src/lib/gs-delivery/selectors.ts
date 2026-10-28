@@ -39,8 +39,11 @@ export const LOGIN_SELECTORS = {
   USERNAME: "#memberId",
   PASSWORD: "#memberKey",
   SUBMIT: "#memberSubmit",
-  /** 로그인 성공 시 상단에 '마이페이지' 링크가 나타남 (실제 URL: /my-page/...) */
-  LOGGED_IN_INDICATOR: "a[href*='my-page']",
+  /**
+   * 로그인 상태에서만 나타나는 로그아웃 링크.
+   * 마이페이지 링크는 비로그인 페이지 헤더에도 있어 로그인 판정에 쓸 수 없다.
+   */
+  LOGGED_IN_INDICATOR: "a[href*='/member/logout']",
   /** Cloudflare Turnstile 캡챠 응답 토큰 */
   TURNSTILE_RESPONSE: "#memberToken",
 } as const;
