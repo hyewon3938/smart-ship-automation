@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "node scripts/predev.mjs && next dev",
+    "dev:stop": "node scripts/dev-stop.mjs",
     "build": "next build && bash scripts/copy-standalone-assets.sh",
     "start": "next start",
     "lint": "eslint",

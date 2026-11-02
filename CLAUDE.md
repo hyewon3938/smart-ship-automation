@@ -152,6 +152,8 @@ npm install
 npx playwright install
 npm run dev
 # http://localhost:3000 접속
+# 이미 실행 중이라며 거절하면 기존 서버를 종료한 뒤 다시 실행
+npm run dev:stop
 ```
 
 ### 서버 배포
