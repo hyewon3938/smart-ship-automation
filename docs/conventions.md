@@ -34,7 +34,7 @@ Conventional Commits 기반:
 - `test`: 테스트 추가/수정
 - `chore`: 빌드, 설정, 의존성 등 기타
 
-**스코프:** `naver`, `gs-delivery`, `ui`, `db`, `settings`, `config`
+**스코프:** `naver`, `gs-delivery`, `dispatch`, `sync`, `orders`, `visit-pickup`, `api`, `ui`, `db`, `settings`, `config`, `build`, `deploy`, `repo`, `claude-md`, `readme`
 
 **예시:**
 ```
@@ -87,6 +87,7 @@ src/
 ├── app/           # Next.js App Router (페이지, API 라우트)
 ├── components/    # React 컴포넌트
 │   └── ui/        # shadcn/ui 컴포넌트 (자동 생성)
+├── hooks/         # TanStack Query 훅
 ├── lib/           # 비즈니스 로직, 외부 서비스 연동
 │   ├── naver/     # 네이버 커머스 API
 │   ├── gs-delivery/ # GS택배 Playwright 자동화
