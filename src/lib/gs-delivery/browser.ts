@@ -1,14 +1,13 @@
 import fs from "fs";
 import path from "path";
 
+import { COOKIES_PATH } from "./paths";
+
 import type { Browser, BrowserContext, Page } from "playwright";
 
 let browser: Browser | null = null;
 let context: BrowserContext | null = null;
 let idleTimer: ReturnType<typeof setTimeout> | null = null;
-
-/** 쿠키 저장 경로 — 로그인 세션 재사용용 */
-const COOKIES_PATH = path.join(process.cwd(), "data", "cookies.json");
 
 /** Idle 타임아웃 — 큐 비고 N분간 신규 작업 없으면 브라우저 자동 종료 */
 const IDLE_TIMEOUT_MS = 5 * 60 * 1000;

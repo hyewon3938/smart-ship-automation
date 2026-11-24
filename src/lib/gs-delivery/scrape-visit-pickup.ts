@@ -1,13 +1,8 @@
-import fs from "fs";
-import path from "path";
-
 import { maskId } from "@/lib/log-mask";
 
+import { loadCookieHeader } from "./scrape-tracking";
 import { GS_URLS } from "./selectors";
 import type { VisitDispatchInfo, VisitRecipientLine } from "./types";
-
-/** 쿠키 파일 경로 (scrape-tracking과 공유) */
-const COOKIES_PATH = path.join(process.cwd(), "data", "cookies.json");
 
 const USER_AGENT =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
@@ -239,18 +234,6 @@ export function extractVisitReservationNos(html: string): string[] {
   }
 
   return nos;
-}
-
-function loadCookieHeader(): string | null {
-  try {
-    if (!fs.existsSync(COOKIES_PATH)) return null;
-    const raw = fs.readFileSync(COOKIES_PATH, "utf-8");
-    const cookies = JSON.parse(raw) as Array<{ name: string; value: string }>;
-    if (!Array.isArray(cookies) || cookies.length === 0) return null;
-    return cookies.map((c) => `${c.name}=${c.value}`).join("; ");
-  } catch {
-    return null;
-  }
 }
 
 function normalizeNo(no: string): string {

@@ -84,12 +84,6 @@ export const DOMESTIC_SELECTORS = {
   RECIPIENT_ADDRESS: "#receiver_addr",
   RECIPIENT_ADDRESS_DETAIL: "#receiver_detail_addr",
 
-  // 주의사항 팝업 (예약 페이지 첫 진입 시 표시)
-  CAUTION_POPUP:
-    ".layer_popup, .popup_wrap, [class*='caution'], [class*='notice']",
-  CAUTION_CONFIRM:
-    "a:has-text('오늘 하루 보지 않기'), button:has-text('오늘 하루 보지 않기'), a:has-text('인지하였습니다'), button:has-text('인지하였습니다'), a:has-text('닫기'), button:has-text('닫기')",
-
   // 배송 요청사항
   DELIVERY_MESSAGE: "#special_contents", // 배송 요청사항 (text input)
 
