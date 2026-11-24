@@ -96,11 +96,6 @@ function markVisitReservationAttempted(reservationNo: string): void {
   recentlyAttemptedVisits.set(reservationNo, Date.now());
 }
 
-/** 테스트용 — 캐시 초기화 */
-export function _resetVisitAttemptCacheForTest(): void {
-  recentlyAttemptedVisits.clear();
-}
-
 /** 현재 시간이 스크래핑 허용 시간대인지 확인 */
 function isWithinScrapeWindow(): boolean {
   const now = new Date();

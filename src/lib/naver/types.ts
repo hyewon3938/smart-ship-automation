@@ -9,15 +9,13 @@ export const tokenResponseSchema = z.object({
   token_type: z.string().optional(),
 });
 
-export type TokenResponse = z.infer<typeof tokenResponseSchema>;
-
 // ──────────────────────────────────────────
 // 조건형 상품 주문 상세 내역 조회 (메인 조회용)
 // GET /v1/pay-order/seller/product-orders
 // ──────────────────────────────────────────
 
 /** 조건형 API 원시 응답 파싱 (내부용) */
-export const conditionalOrderContentSchema = z.object({
+const conditionalOrderContentSchema = z.object({
   order: z.object({
     orderId: z.string(),
     orderDate: z.string(),
@@ -61,7 +59,6 @@ export const conditionalOrdersResponseSchema = z.object({
 });
 
 export type ConditionalOrderContent = z.infer<typeof conditionalOrderContentSchema>;
-export type ConditionalOrdersResponse = z.infer<typeof conditionalOrdersResponseSchema>;
 
 // ──────────────────────────────────────────
 // 내부 공통 타입 — sync.ts가 사용하는 주문 상세 인터페이스
@@ -104,7 +101,7 @@ export interface AwaitingAddressOrder {
  * 조건형 API 응답 → ProductOrderDetail 변환.
  * 배송지가 없는 주문(선물하기 미수령, 디지털 상품 등)은 택배 자동화 대상이 아니므로 null 반환.
  */
-export function toProductOrderDetail(raw: ConditionalOrderContent): ProductOrderDetail | null {
+function toProductOrderDetail(raw: ConditionalOrderContent): ProductOrderDetail | null {
   const addr = raw.productOrder.shippingAddress;
   if (!addr) return null;
 

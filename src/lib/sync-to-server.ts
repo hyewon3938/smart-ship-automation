@@ -275,18 +275,9 @@ export async function syncOrderDeletion(orderId: string): Promise<{
   };
 }
 
-/** 운송장번호를 서버에 동기화 (로컬 스크래핑 결과 전송) */
-export async function syncTrackingNumbers(
-  items: Array<{ orderId: string; trackingNumber: string }>,
-): Promise<boolean> {
-  if (items.length === 0) return true;
-  const res = await postToServer("/api/internal/tracking", { items });
-  return res.ok;
-}
-
 /**
  * 로컬에서 스크래핑한 운송장을 서버로 넘겨 **즉시 발송처리**를 요청한다.
- * (운송장만 저장하고 워커에 위임하는 syncTrackingNumbers와 달리, 서버가 바로 발송)
+ * (운송장만 저장하고 워커에 위임하는 /api/internal/tracking과 달리, 서버가 바로 발송)
  *
  * @returns 서버가 발송한 orderId 목록 + 실패 목록. 서버 연결/응답 실패 시 null.
  */

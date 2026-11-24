@@ -10,7 +10,7 @@ import type { DispatchStatus, OrderStatus } from "@/types";
 // ─── 삭제 정책 ───
 
 /** 삭제 가능한 상태 (예약 진행 중·발송완료는 제외) */
-export const DELETABLE_STATUSES: ReadonlySet<string> = new Set([
+const DELETABLE_STATUSES: ReadonlySet<string> = new Set([
   "pending",
   "booked",
   "failed",
