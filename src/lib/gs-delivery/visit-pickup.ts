@@ -8,40 +8,11 @@ import {
   ACTION_DELAY_MS,
   PAGE_LOAD_TIMEOUT_MS,
 } from "./selectors";
+import { formatPhone, sanitizeAddress, sanitizeParenName } from "./format";
+import { DEBUG_DIR, SCREENSHOTS_DIR } from "./paths";
 
 import type { Page } from "playwright";
 import type { BookingResult, VisitPickupTask } from "./types";
-
-const SCREENSHOTS_DIR = path.join(process.cwd(), "data", "screenshots");
-const DEBUG_DIR = path.join(process.cwd(), "data", "debug");
-
-/**
- * 전화번호 포맷팅 (automation.ts와 동일 로직).
- */
-function formatPhone(raw: string): string {
-  if (raw.includes("-")) return raw;
-  const digits = raw.replace(/\D/g, "");
-  if (digits.length === 11)
-    return `${digits.slice(0, 3)}-${digits.slice(3, 7)}-${digits.slice(7)}`;
-  if (digits.length === 12)
-    return `${digits.slice(0, 4)}-${digits.slice(4, 8)}-${digits.slice(8)}`;
-  if (digits.length === 10 && digits.startsWith("02"))
-    return `${digits.slice(0, 2)}-${digits.slice(2, 6)}-${digits.slice(6)}`;
-  if (digits.length === 10)
-    return `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6)}`;
-  return raw;
-}
-
-function sanitizeName(name: string): string {
-  // "주문자(수령인)" 형식이면 수령인만 추출
-  const parenMatch = name.match(/\(([^)]+)\)/);
-  const extracted = parenMatch ? parenMatch[1] : name;
-  return extracted.replace(/[^\uAC00-\uD7A3a-zA-Z0-9 ]/g, "").trim();
-}
-
-function sanitizeAddress(addr: string): string {
-  return addr.replace(/[^\uAC00-\uD7A3a-zA-Z0-9 .,\-()\/\#]/g, "").trim();
-}
 
 /**
  * 방문택배 다량 접수 폼 자동 입력.
@@ -53,7 +24,6 @@ export async function bookVisitPickup(
   task: VisitPickupTask,
 ): Promise<BookingResult> {
   let currentStep = "";
-  let lastReloadAlertAt = 0;
 
   try {
     // 알럿(confirm/alert) 자동 수락 핸들러 + reload 알럿 분류
@@ -65,7 +35,6 @@ export async function bookVisitPickup(
         msg.includes("새로고침") ||
         msg.includes("다시 시도");
       if (isReloadAlert) {
-        lastReloadAlertAt = Date.now();
         console.log(`[visit-pickup] ⚠️ Reload 알럿 감지 (${type}): "${msg}"`);
       } else {
         console.log(`[visit-pickup] 알럿 자동 수락 (${type}): "${msg}"`);
@@ -687,7 +656,7 @@ async function fillRecipientForm(
       }
     },
     {
-      name: sanitizeName(recipient.recipientName),
+      name: sanitizeParenName(recipient.recipientName),
       phone: formatPhone(recipient.recipientPhone),
       zip: recipient.recipientZipCode,
       addr: sanitizeAddress(recipient.recipientAddress),

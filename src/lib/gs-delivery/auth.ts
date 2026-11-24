@@ -1,4 +1,3 @@
-import fs from "fs";
 import path from "path";
 
 import {
@@ -8,9 +7,9 @@ import {
   ACTION_DELAY_MS,
 } from "./selectors";
 import { saveCookies } from "./browser";
+import { syncSavedCookiesToServer } from "./cookie-sync";
 
 import { getConfigValue } from "@/lib/settings";
-import { syncCookiesToServer } from "@/lib/sync-to-server";
 
 import type { Page } from "playwright";
 
@@ -190,20 +189,11 @@ export async function login(page: Page): Promise<void> {
 
   console.log("[auth] 로그인 성공 (검증 완료)");
   await saveCookies();
-  void syncCookiesAfterLogin();
-}
-
-/** 로그인 성공 후 저장된 쿠키를 서버에 동기화 */
-async function syncCookiesAfterLogin(): Promise<void> {
-  const cookiesPath = path.join(process.cwd(), "data", "cookies.json");
-  try {
-    if (!fs.existsSync(cookiesPath)) return;
-    const raw = fs.readFileSync(cookiesPath, "utf-8");
-    const cookies = JSON.parse(raw) as Array<Record<string, unknown>>;
-    await syncCookiesToServer(cookies);
-  } catch {
-    console.warn("[auth] 쿠키 서버 동기화 실패 (무시)");
-  }
+  // 쿠키 경로는 호출 시점의 cwd로 계산한다
+  void syncSavedCookiesToServer(
+    path.join(process.cwd(), "data", "cookies.json"),
+    "[auth]"
+  );
 }
 
 /**

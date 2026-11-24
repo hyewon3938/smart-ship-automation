@@ -7,18 +7,16 @@
  */
 
 import fs from "fs";
-import path from "path";
 
 import { newPage, saveCookies } from "./browser";
 import { isLoggedIn, waitForLogin, LOGIN_WAIT_MS } from "./auth";
 import { GS_URLS, LOGIN_SELECTORS, ACTION_DELAY_MS } from "./selectors";
+import { syncSavedCookiesToServer } from "./cookie-sync";
+import { COOKIES_PATH } from "./paths";
 import { getConfigValue } from "@/lib/settings";
-import { syncCookiesToServer } from "@/lib/sync-to-server";
 
 /** 쿠키 최대 유효 시간 (시간) */
 const COOKIE_MAX_AGE_HOURS = 24;
-
-const COOKIES_PATH = path.join(process.cwd(), "data", "cookies.json");
 
 // ── 공개 API ──
 
@@ -86,7 +84,7 @@ export async function loginDirect(): Promise<{
 
     if (await waitForLogin(page)) {
       await saveCookies();
-      void syncCookiesAfterSave();
+      void syncSavedCookiesToServer(COOKIES_PATH, "[login-direct]");
       console.log("[login-direct] 로그인 성공 — 쿠키 저장 완료");
       return { success: true, message: "로그인 성공! 쿠키가 저장되었습니다." };
     }
@@ -101,30 +99,5 @@ export async function loginDirect(): Promise<{
     return { success: false, message: `로그인 실패: ${msg}` };
   } finally {
     await page.close().catch(() => {});
-  }
-}
-
-// ── 내부 유틸 ──
-
-/** 쿠키 파일 수정 시간 반환 (없으면 null) */
-function getCookieFileTime(): string | null {
-  try {
-    if (!fs.existsSync(COOKIES_PATH)) return null;
-    const stat = fs.statSync(COOKIES_PATH);
-    return stat.mtime.toISOString();
-  } catch {
-    return null;
-  }
-}
-
-/** 저장된 쿠키를 서버에 동기화 */
-async function syncCookiesAfterSave(): Promise<void> {
-  try {
-    if (!fs.existsSync(COOKIES_PATH)) return;
-    const raw = fs.readFileSync(COOKIES_PATH, "utf-8");
-    const cookies = JSON.parse(raw) as Array<Record<string, unknown>>;
-    await syncCookiesToServer(cookies);
-  } catch {
-    console.warn("[login-direct] 쿠키 서버 동기화 실패 (무시)");
   }
 }

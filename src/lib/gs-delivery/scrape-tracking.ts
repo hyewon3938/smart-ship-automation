@@ -1,8 +1,8 @@
 import fs from "fs";
-import path from "path";
 
 import { maskId } from "@/lib/log-mask";
 
+import { COOKIES_PATH } from "./paths";
 import { GS_URLS } from "./selectors";
 
 export interface ReservationInfo {
@@ -10,9 +10,6 @@ export interface ReservationInfo {
   /** 운송장번호 — 아직 미배정이면 null */
   trackingNo: string | null;
 }
-
-/** 쿠키 파일 경로 */
-const COOKIES_PATH = path.join(process.cwd(), "data", "cookies.json");
 
 /**
  * GS택배 HTTP 스크래핑 공용 헤더 (Cookie 제외).
