@@ -21,6 +21,9 @@ interface ServerStatusCount {
   dispatch_failed: number;
 }
 
+/** 두 모드의 카운트 키를 합친 것 — 탭의 countKey로 단언 없이 읽기 위한 타입 */
+type CountKey = keyof StatusCount | keyof ServerStatusCount;
+
 interface StatusFilterProps {
   currentStatus: OrderStatus | ServerFilter | undefined;
   counts: StatusCount | ServerStatusCount;
@@ -60,6 +63,7 @@ export function StatusFilter({
   isServerMode = false,
 }: StatusFilterProps) {
   const tabs = isServerMode ? SERVER_TABS : LOCAL_TABS;
+  const countByKey: Partial<Record<CountKey, number>> = counts;
 
   return (
     <div className="flex gap-1 flex-wrap">
@@ -72,7 +76,7 @@ export function StatusFilter({
         >
           {tab.label}
           <span className="ml-1 text-xs opacity-70">
-            ({(counts as unknown as Record<string, number>)[tab.countKey]})
+            ({countByKey[tab.countKey]})
           </span>
         </Button>
       ))}

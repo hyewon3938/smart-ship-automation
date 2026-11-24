@@ -1,20 +1,17 @@
 "use client";
 
-import { useState } from "react";
-import Link from "next/link";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { useEffect, useRef } from "react";
 
 import { BookingConfirmDialog } from "@/components/BookingConfirmDialog";
 import { DeleteOrderDialog } from "@/components/DeleteOrderDialog";
 import { DispatchPanel } from "@/components/DispatchPanel";
-import { ManualDispatchButton } from "@/components/ManualDispatchButton";
 import { VisitPickupConfirmDialog } from "@/components/VisitPickupConfirmDialog";
 import { OrderTable } from "@/components/OrderTable";
 import { OrderTableSkeleton } from "@/components/OrderTableSkeleton";
 import { StatusFilter } from "@/components/StatusFilter";
-import { SyncButton } from "@/components/SyncButton";
-import { Button } from "@/components/ui/button";
+import { DashboardHeader } from "@/components/dashboard/DashboardHeader";
+import { SelectionActionBar } from "@/components/dashboard/SelectionActionBar";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   useBookOrders,
@@ -39,10 +36,14 @@ import { requestJson } from "@/lib/api-client";
 
 import type {
   DeliveryType,
+  Order,
   OrderGroup,
   OrderStatus,
   ServerFilter,
 } from "@/types";
+
+/** 조회 전 기본값 — 매 렌더 새 배열을 만들면 useEffect 의존성이 계속 바뀐다 */
+const EMPTY_ORDERS: Order[] = [];
 
 const isServerMode = process.env.NEXT_PUBLIC_DEPLOY_MODE === "server";
 
@@ -98,7 +99,7 @@ export function Dashboard() {
   // 서버 모드: useOrders(undefined)로 전체 조회 후 클라이언트 필터링
   // 로컬 모드: allOrdersQuery는 카운트용, data는 API 필터링된 목록
   const allOrdersQuery = useOrders(undefined);
-  const allOrders = allOrdersQuery.data?.orders ?? [];
+  const allOrders = allOrdersQuery.data?.orders ?? EMPTY_ORDERS;
 
   // 주문(orderId) 그룹 기준 상태별 카운트 — 화면에 보이는 숫자는 모두 주문 단위
   const statusCounts = countGroupsByStatus(allOrders);
@@ -322,68 +323,16 @@ export function Dashboard() {
 
   return (
     <div className="space-y-6">
-      {/* 헤더 */}
-      <div className="flex items-start justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="text-2xl font-bold">Smart Ship Automation</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            네이버 스마트스토어 주문 → GS택배 자동 예약
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
-          {!isServerMode && (
-            <ManualDispatchButton bookedGroupCount={statusCounts.booked} />
-          )}
-          {!isServerMode && (
-            <button
-              onClick={() => void handleGsLogin()}
-              disabled={isLoggingIn}
-              className={`text-sm hover:text-foreground disabled:opacity-50 ${
-                isLoggingIn
-                  ? "animate-pulse text-muted-foreground"
-                  : isCookieExpired
-                    ? "text-orange-600 font-medium"
-                    : "text-muted-foreground"
-              }`}
-            >
-              {isLoggingIn
-                ? "로그인 중..."
-                : `GS로그인${isCookieExpired ? " (만료)" : ""}`}
-            </button>
-          )}
-          <Link
-            href="/settings"
-            className="text-sm text-muted-foreground hover:text-foreground"
-          >
-            설정
-          </Link>
-          {!isServerMode && (
-            <SyncButton
-              lastSyncTime={lastSyncTime}
-              isPending={syncMutation.isPending}
-              onSync={handleSync}
-            />
-          )}
-        </div>
-      </div>
-
-      {/* GS택배 로그인 만료 배너 (로컬 모드만) */}
-      {!isServerMode && isCookieExpired && (
-        <div className="flex items-center justify-between gap-3 rounded-lg border border-orange-200 bg-orange-50 px-4 py-3 text-sm">
-          <span className="text-orange-800">
-            GS택배 로그인 세션이 만료되었습니다. 예약 전에 로그인해주세요.
-          </span>
-          <Button
-            variant="outline"
-            size="sm"
-            className="shrink-0 border-orange-300 text-orange-700 hover:bg-orange-100"
-            disabled={isLoggingIn}
-            onClick={() => void handleGsLogin()}
-          >
-            {isLoggingIn ? "로그인 중..." : "GS택배 로그인"}
-          </Button>
-        </div>
-      )}
+      <DashboardHeader
+        isServerMode={isServerMode}
+        bookedGroupCount={statusCounts.booked}
+        isLoggingIn={isLoggingIn}
+        isCookieExpired={isCookieExpired}
+        lastSyncTime={lastSyncTime}
+        isSyncPending={syncMutation.isPending}
+        onGsLogin={handleGsLogin}
+        onSync={handleSync}
+      />
 
       {/* 상태 필터 */}
       <StatusFilter
@@ -432,54 +381,18 @@ export function Dashboard() {
 
       {/* 액션 바 (로컬 모드만) */}
       {!isServerMode && orders.length > 0 && (
-        <div className="flex items-center justify-between gap-4 pt-2 border-t">
-          <span className="text-sm text-muted-foreground">
-            {selectedIds.size > 0 ? (
-              <span>
-                <strong>{selectedGroups.length}건</strong> 선택됨
-                <span className="ml-1 text-xs">
-                  ({selectedIds.size}개 상품)
-                </span>
-              </span>
-            ) : (
-              `대기 ${statusCounts.pending}건`
-            )}
-          </span>
-          <div className="flex gap-2">
-            {(statusCounts.booking ?? 0) > 0 ? (
-              <Button
-                size="sm"
-                variant="destructive"
-                disabled={cancelBookingMutation.isPending}
-                onClick={handleCancelBooking}
-              >
-                {cancelBookingMutation.isPending ? "취소 중..." : "예약 취소"}
-              </Button>
-            ) : (
-              <>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={
-                    selectedGroups.length < 2 ||
-                    visitPickupMutation.isPending ||
-                    bookMutation.isPending
-                  }
-                  onClick={() => setIsVisitPickupDialogOpen(true)}
-                >
-                  방문택배 ({selectedGroups.length}건)
-                </Button>
-                <Button
-                  size="sm"
-                  disabled={selectedIds.size === 0 || bookMutation.isPending}
-                  onClick={() => handleOpenBookingDialog()}
-                >
-                  선택 건 예약 ({selectedGroups.length}건)
-                </Button>
-              </>
-            )}
-          </div>
-        </div>
+        <SelectionActionBar
+          selectedCount={selectedIds.size}
+          selectedGroupCount={selectedGroups.length}
+          pendingCount={statusCounts.pending}
+          bookingCount={statusCounts.booking}
+          isCancelPending={cancelBookingMutation.isPending}
+          isVisitPickupPending={visitPickupMutation.isPending}
+          isBookPending={bookMutation.isPending}
+          onCancelBooking={handleCancelBooking}
+          onOpenVisitPickupDialog={() => setIsVisitPickupDialogOpen(true)}
+          onOpenBookingDialog={handleOpenBookingDialog}
+        />
       )}
 
       {/* 발송 실패 복구 (로컬 모드만) — dispatch_failed 그룹이 있을 때만 나타난다.

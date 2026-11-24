@@ -1,26 +1,9 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { requestJson } from "@/lib/api-client";
 import type { DispatchSettings } from "@/types";
-
-interface DispatchWorkerStatus {
-  isPolling: boolean;
-  isRunning: boolean;
-}
-
-interface DispatchSettingsResponse {
-  dispatch: DispatchSettings;
-  worker: DispatchWorkerStatus;
-}
-
-interface SyncTrackingResult {
-  message: string;
-  tracked: number;
-  dispatched: number;
-  errors: string[];
-}
 
 interface ManualDispatchNowResult {
   ok: boolean;
@@ -35,16 +18,6 @@ interface ManualDispatchNowResult {
 interface GsLoginResult {
   success: boolean;
   message: string;
-}
-
-/** 발송처리 설정 + 워커 상태 조회 */
-export function useDispatchSettings() {
-  return useQuery<DispatchSettingsResponse>({
-    queryKey: ["dispatch", "settings"],
-    queryFn: () =>
-      requestJson<DispatchSettingsResponse>("/api/dispatch/settings"),
-    refetchInterval: 30_000, // 30초마다 워커 상태 갱신
-  });
 }
 
 /** 발송처리 설정 변경 */
@@ -66,20 +39,6 @@ export function useUpdateDispatchSettings() {
       ),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["dispatch", "settings"] });
-    },
-  });
-}
-
-/** 수동 운송장 동기화 */
-export function useSyncTracking() {
-  const queryClient = useQueryClient();
-  return useMutation<SyncTrackingResult>({
-    mutationFn: () =>
-      requestJson<SyncTrackingResult>("/api/dispatch/sync-tracking", {
-        method: "POST",
-      }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["orders"] });
     },
   });
 }
