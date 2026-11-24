@@ -5,9 +5,10 @@ import bcryptjs from "bcryptjs";
 
 import { getConfigValue, getSetting } from "@/lib/settings";
 
+import { BASE_URL } from "./http";
 import { tokenResponseSchema } from "./types";
 
-const TOKEN_URL = "https://api.commerce.naver.com/external/v1/oauth2/token";
+const TOKEN_URL = `${BASE_URL}/oauth2/token`;
 const TOKEN_BUFFER_MS = 60_000; // 만료 1분 전 갱신
 
 // 모듈 레벨 토큰 캐시

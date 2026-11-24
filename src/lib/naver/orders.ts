@@ -1,4 +1,5 @@
 import { getAccessToken } from "./auth";
+import { BASE_URL, INITIAL_BACKOFF_MS, MAX_RETRIES } from "./http";
 import {
   conditionalOrdersResponseSchema,
   splitByShippingAddress,
@@ -6,9 +7,6 @@ import {
 import type { NaverItemState } from "@/lib/order-lifecycle";
 import type { AwaitingAddressOrder, ProductOrderDetail } from "./types";
 
-const BASE_URL = "https://api.commerce.naver.com/external/v1";
-const MAX_RETRIES = 3;
-const INITIAL_BACKOFF_MS = 1000;
 /**
  * 기본 조회 기간 (일).
  *

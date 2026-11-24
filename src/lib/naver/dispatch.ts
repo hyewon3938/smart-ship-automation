@@ -4,11 +4,8 @@ import type { NaverItemState } from "@/lib/order-lifecycle";
 
 import { getAccessToken } from "./auth";
 import { DELIVERY_COMPANY_CODES } from "./delivery-companies";
+import { BASE_URL, INITIAL_BACKOFF_MS, MAX_RETRIES } from "./http";
 import { fetchProductOrderStates } from "./orders";
-
-const BASE_URL = "https://api.commerce.naver.com/external/v1";
-const MAX_RETRIES = 3;
-const INITIAL_BACKOFF_MS = 1000;
 
 /** 발송처리 직후 네이버에 반영되기까지의 지연을 감안한 대조 재시도 */
 const VERIFY_ATTEMPTS = 3;
