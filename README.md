@@ -1,6 +1,6 @@
 # Smart Ship Automation
 
-> 네이버 스마트스토어 발송대기 주문을 GS편의점 택배에 자동으로 예약하는 로컬 웹 앱
+> 네이버 스마트스토어 발송대기 주문을 GS편의점 택배에 자동으로 예약하고, 운송장번호가 나오면 네이버 발송처리까지 마치는 로컬+서버 웹 앱
 
 ---
 
@@ -40,7 +40,7 @@
 ![시스템 아키텍처](docs/images/architecture.svg)
 
 - **로컬**: GS택배 예약 (캡챠가 있어 사람이 보는 headed 브라우저 필요)
-- **서버**: 운송장번호 조회 + 네이버 발송처리 폴링 자동 실행 (headless)
+- **서버**: 로컬에서 받은 쿠키로 GS택배 예약조회 페이지를 HTTP 요청해 운송장번호 조회 + 네이버 발송처리 폴링 자동 실행
 - 로컬에서 예약 완료 시 쿠키와 결과를 서버로 자동 동기화
 
 ---
@@ -67,22 +67,35 @@
 src/
 ├── app/                    # Next.js App Router
 │   ├── api/                # REST API 엔드포인트
+│   │   ├── auth/           # 앱 로그인·로그아웃
 │   │   ├── orders/         # 주문 조회·동기화·예약
 │   │   ├── dispatch/       # 발송처리·운송장 동기화
+│   │   ├── gs-login/       # GS택배 로그인·세션 확인
 │   │   ├── settings/       # 설정 CRUD·연결 테스트
 │   │   ├── screenshots/    # 스크린샷 서빙
-│   │   └── internal/       # 서버 내부 동기화 API
+│   │   └── internal/       # 로컬↔서버 동기화 API
+│   ├── login/              # 로그인 페이지
 │   └── settings/           # 설정 페이지
 ├── components/             # React 컴포넌트
+│   ├── dashboard/          # 대시보드 하위 컴포넌트
+│   ├── order-table/        # 주문 테이블 하위 컴포넌트
+│   ├── settings/           # 설정 페이지 탭
 │   └── ui/                 # shadcn/ui (자동 생성)
+├── hooks/                  # TanStack Query 훅
 ├── lib/                    # 비즈니스 로직
 │   ├── naver/              # 네이버 커머스 API 클라이언트
-│   ├── gs-delivery/        # GS택배 Playwright 자동화
-│   └── db/                 # SQLite + Drizzle ORM
-└── types/                  # 공유 타입 정의
+│   ├── gs-delivery/        # GS택배 자동화 (Playwright 예약 + HTTP 스크래핑)
+│   ├── orders/             # 주문 조회·상태 변경 서비스 함수
+│   ├── db/                 # SQLite + Drizzle ORM
+│   ├── dispatch-worker.ts  # 서버 폴링 워커 (운송장 조회 + 발송처리)
+│   └── sync-to-server.ts   # 로컬→서버 동기화
+├── types/                  # 공유 타입 정의
+├── instrumentation.ts      # 서버 모드일 때 폴링 시작
+└── proxy.ts                # 로그인 세션 확인
 
+scripts/                    # 배포·개발 서버 스크립트
 docs/                       # 프로젝트 문서
-data/                       # SQLite DB 파일 (gitignore)
+data/                       # SQLite DB, GS택배 쿠키 (gitignore)
 ```
 
 ---
@@ -134,11 +147,20 @@ cp .env.local.example .env.local
 | `SENDER_PHONE` | 보내는 사람 전화번호 |
 | `SENDER_ZIPCODE` | 보내는 사람 우편번호 |
 | `SENDER_ADDRESS` | 보내는 사람 주소 |
+| `SENDER_ADDRESS_DETAIL` | 보내는 사람 상세 주소 |
+| `AUTH_USERNAME` | 앱 로그인 아이디 |
+| `AUTH_PASSWORD` | 앱 로그인 비밀번호 |
+| `AUTH_SECRET` | 로그인 세션 서명 키 (필수) |
 | `DEPLOY_MODE` | `local` (기본) / `server` (서버 폴링 활성화) |
+| `NEXT_PUBLIC_DEPLOY_MODE` | 대시보드 화면이 읽는 배포 모드. `DEPLOY_MODE`와 같은 값 |
 | `INTERNAL_API_KEY` | 내부 동기화 API 인증 키 |
 | `SERVER_URL` | 서버 URL (미설정 시 로컬 전용 동작) |
+| `SMART_SHIP_DB_PATH` | SQLite 파일 경로 (미설정 시 `data/smart-ship.db`) |
+| `DEPLOY_SSH_HOST` | 배포 스크립트가 접속할 서버 (로컬 전용) |
+| `DEPLOY_SSH_KEY` | 배포용 SSH 키 파일 경로 (로컬 전용) |
+| `DEPLOY_REMOTE_PATH` | 서버의 프로젝트 경로 (로컬 전용) |
 
-> 설정 페이지(`/settings`)에서 UI로도 관리할 수 있습니다. DB 값이 환경 변수보다 우선합니다.
+> 네이버 API 키, GS택배 계정, 보내는 사람 정보는 설정 페이지(`/settings`)에서 UI로도 관리할 수 있습니다. DB 값이 환경 변수보다 우선합니다.
 
 ---
 
@@ -172,15 +194,14 @@ npm test
 ## 서버 배포 (Oracle Cloud VM)
 
 ```bash
-# 서버 접속
-ssh -i ~/.ssh/[key] ubuntu@[server-ip]
+# 최초 1회, 서버에서 실행 (Playwright 의존성·Caddy·PM2 설치 후 빌드와 앱 시작)
+npm run deploy:init
 
-# 배포
-cd smart-ship-automation
-git pull
-npm run build
-pm2 restart smart-ship
+# 이후 배포, 로컬에서 실행
+npm run deploy
 ```
+
+`npm run deploy`는 로컬에서 빌드한 standalone 결과물을 rsync로 서버에 올리고 PM2 앱을 다시 시작합니다. 접속 정보는 `.env.local`의 `DEPLOY_SSH_HOST`, `DEPLOY_SSH_KEY`, `DEPLOY_REMOTE_PATH`에서 읽습니다.
 
 서버 환경변수: `DEPLOY_MODE=server` 설정 시 `instrumentation.ts`에서 발송처리 폴링 자동 시작.
 
@@ -190,17 +211,35 @@ pm2 restart smart-ship
 
 | 메서드 | 경로 | 설명 |
 |--------|------|------|
+| `POST` | `/api/auth/login` | 앱 로그인 + 세션 쿠키 발급 |
+| `POST` | `/api/auth/logout` | 세션 쿠키 삭제 |
 | `GET` | `/api/orders` | 주문 목록 조회 |
 | `POST` | `/api/orders/sync` | 네이버 주문 동기화 |
+| `POST` | `/api/orders/reconcile` | 서버의 발송 상태를 로컬에 반영 (로컬 전용) |
 | `POST` | `/api/orders/book` | GS택배 예약 시작 |
-| `PATCH` | `/api/orders/group` | 그룹 상태/택배유형 변경 |
+| `POST` | `/api/orders/book-visit` | 방문택배 예약 시작 (2건 이상) |
+| `POST` | `/api/orders/cancel-booking` | 진행 중인 예약 취소 |
+| `PATCH/DELETE` | `/api/orders/group` | 그룹 상태/택배유형 변경, 그룹 삭제 |
 | `GET` | `/api/orders/:id/logs` | 예약 로그 조회 |
 | `GET` | `/api/screenshots/:filename` | 스크린샷 이미지 |
+| `POST` | `/api/gs-login` | 로컬 브라우저로 GS택배 로그인 |
+| `GET` | `/api/gs-login/status` | GS택배 쿠키 유효성 확인 |
 | `POST` | `/api/dispatch` | 수동 발송처리 |
 | `POST` | `/api/dispatch/sync-tracking` | 운송장번호 동기화 |
+| `POST` | `/api/dispatch/manual-now` | 운송장 조회 후 서버에 즉시 발송 요청 (로컬 전용) |
+| `GET/PUT` | `/api/dispatch/settings` | 발송처리 설정·폴링 상태 조회/변경 |
+| `GET` | `/api/dispatch/debug-scrape` | 예약조회 페이지 구조 확인 (개발 환경 전용) |
 | `GET/PUT` | `/api/settings` | 설정 조회/저장 |
 | `POST` | `/api/settings/test-naver` | 네이버 API 연결 테스트 |
 | `POST` | `/api/settings/test-gs` | GS택배 로그인 테스트 |
+| `POST` | `/api/internal/cookies` | 로컬의 GS택배 쿠키 수신 |
+| `POST` | `/api/internal/booking-result` | 로컬의 예약 결과 수신 |
+| `POST` | `/api/internal/tracking` | 로컬이 조회한 운송장번호 수신 |
+| `POST` | `/api/internal/dispatch-now` | 운송장번호 수신 후 즉시 발송처리 |
+| `POST` | `/api/internal/order-state` | 서버의 주문 발송 상태 조회 |
+| `DELETE` | `/api/internal/orders` | 로컬에서 삭제한 주문 그룹을 서버에서도 삭제 |
+
+`/api/internal/*`은 로컬과 서버가 주고받는 동기화용이며 `INTERNAL_API_KEY`로 인증합니다.
 
 ---
 

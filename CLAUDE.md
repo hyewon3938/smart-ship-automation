@@ -19,7 +19,7 @@
 - 네이버 커머스 API로 발송대기 주문 조회 → 리스트 표시
 - 주문 선택 후 GS택배 사이트에 Playwright로 자동 예약 (로컬)
 - 국내택배 / 내일배송 택배 유형 선택 (제주·도서 제외 지역 자동 판별)
-- 서버에서 운송장번호 자동 스크래핑 → 네이버 발송처리 (11시~18시 KST)
+- 서버에서 운송장번호 자동 스크래핑 → 네이버 발송처리 (8시~18시 KST, 예약 후 1시간은 시간대 무관)
 - 로컬 → 서버 자동 동기화 (쿠키, 주문 데이터, 예약 결과)
 - PWA 대시보드 (모바일 홈화면 설치 가능)
 
@@ -40,7 +40,7 @@
 |------|---------------------------|---------------------------|
 | GS택배 로그인 | ✅ Playwright headed (캡챠 수동) | ❌ 불가 (Cloudflare Turnstile) |
 | 택배 예약 | ✅ Playwright 자동화 | ❌ |
-| 운송장 스크래핑 | - | ✅ HTTP fetch + 쿠키 (11~18시) |
+| 운송장 스크래핑 | - | ✅ HTTP fetch + 쿠키 (8~18시) |
 | 네이버 발송처리 | - | ✅ 자동 (dispatch-worker) |
 | DB | 로컬 SQLite | 서버 SQLite (별도) |
 
@@ -51,7 +51,7 @@
   ├→ POST /api/internal/cookies      (쿠키 → 서버)
   └→ POST /api/internal/booking-result (주문 데이터 upsert → 서버)
 
-서버 폴링 (2분 간격, 11~18시 KST만 스크래핑)
+서버 폴링 (2분 간격, 8~18시 KST와 예약 후 1시간 이내에만 스크래핑)
   ├→ scrapeTrackingNumbers()  (HTTP fetch + 쿠키 헤더)
   ├→ updateTrackingNumbers()  (운송장번호 DB 저장)
   ├→ dispatchOrders()         (네이버 API 발송처리)
@@ -70,18 +70,27 @@
 src/
 ├── app/              # Next.js App Router (페이지, API 라우트)
 │   ├── api/          # REST API 엔드포인트
-│   │   └── internal/ # 로컬↔서버 동기화 API (cookies, booking-result, tracking)
+│   │   └── internal/ # 로컬↔서버 동기화 API (cookies, booking-result, tracking, dispatch-now, order-state, orders)
+│   ├── login/        # 로그인 페이지
 │   └── settings/     # 설정 페이지
 ├── components/       # React 컴포넌트
+│   ├── dashboard/    # Dashboard 하위 컴포넌트
+│   ├── order-table/  # OrderTable 하위 컴포넌트
+│   ├── settings/     # 설정 페이지 탭
 │   └── ui/           # shadcn/ui (자동 생성)
+├── hooks/            # TanStack Query 훅 (useOrders, useDispatch, useSettings)
 ├── lib/              # 비즈니스 로직
 │   ├── naver/        # 네이버 커머스 API 클라이언트
 │   ├── gs-delivery/  # GS택배 자동화 (Playwright + HTTP 스크래핑)
+│   ├── orders/       # 주문 조회·상태 변경 서비스 함수
 │   ├── db/           # SQLite + Drizzle ORM
 │   ├── dispatch-worker.ts  # 서버 폴링 워커 (운송장 감지 + 발송처리)
 │   └── sync-to-server.ts   # 로컬→서버 동기화 유틸
-└── types/            # 공유 타입 정의
+├── types/            # 공유 타입 정의
+├── instrumentation.ts # 서버 시작 시 1회 실행, DEPLOY_MODE=server일 때 폴링 시작
+└── proxy.ts          # 로그인 세션 확인 (Next.js 16 proxy)
 
+scripts/              # 배포(deploy-fast.sh, deploy.sh)·dev 서버 스크립트
 docs/                 # 프로젝트 문서
 data/                 # SQLite DB + cookies.json (gitignore)
 .claude/worktrees/    # 세션별 git worktree (gitignore)
@@ -158,9 +167,12 @@ npm run dev:stop
 
 ### 서버 배포
 ```bash
-# 호스트/키는 ~/.ssh/config 또는 로컬 환경에서 관리
-ssh <server> \
-  "cd smart-ship-automation && git pull && npm run build && pm2 restart smart-ship"
+# 로컬에서 실행: 로컬 빌드 → standalone 결과물 rsync → PM2 재시작 (scripts/deploy-fast.sh)
+# 접속 정보는 .env.local의 DEPLOY_SSH_HOST / DEPLOY_SSH_KEY / DEPLOY_REMOTE_PATH에서 읽는다
+npm run deploy
+
+# 서버 최초 설치 때만 서버에서 실행 (scripts/deploy.sh)
+npm run deploy:init
 ```
 
 ### 환경 변수 (`.env.local`)

@@ -8,6 +8,7 @@
     "build": "next build && bash scripts/copy-standalone-assets.sh",
     "start": "next start",
     "lint": "eslint",
+    "test": "vitest run",
     "postinstall": "npm rebuild better-sqlite3 2>/dev/null || true",
     "deploy": "bash scripts/deploy-fast.sh",
     "deploy:init": "bash scripts/deploy.sh"
